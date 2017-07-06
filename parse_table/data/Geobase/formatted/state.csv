@@ -1,0 +1,52 @@
+name,abbreviation,capital,population,area,state_number,city1,city2,city3,city4
+alabama,al,montgomery,3894.0e+3,51.7e+3,22,birmingham,mobile,montgomery,huntsville
+alaska,ak,juneau,401.8e+3,591.0e+3,49,anchorage,fairbanks,juneau,sitka
+arizona,az,phoenix,2718.0e+3,114.0e+3,48,phoenix,tucson,mesa,tempe
+arkansas,ar,little rock,2286.0e+3,53.2e+3,25,little rock,fort smith,north little rock,pine bluff
+california,ca,sacramento,23.67e+6,158.0e+3,31,los angeles,san diego,san francisco,san jose
+colorado,co,denver,2889.0e+3,104.0e+3,38,denver,colorado springs,aurora,lakewood
+connecticut,ct,hartford,3107.0e+3,5.02e+3,5,bridgeport,hartford,new haven,waterbury
+delaware,de,dover,594.0e+3,2044,1,wilmington,newark,dover,brookside
+district of columbia,dc,washington,638.0e+3,1100,0,tenleytown,washington,georgetown,duval circle
+florida,fl,tallahassee,9746.0e+3,68664,27,jacksonville,miami,tampa,st. petersburg
+georgia,ga,atlanta,5463.0e+3,58.9e+3,4,atlanta,columbus,savannah,macon
+hawaii,hi,honolulu,964.0e+3,6471,50,honolulu,ewa,koolaupoko,wahiawa
+idaho,id,boise,944.0e+3,83.0e+3,43,boise,pocatello,idaho falls,lewiston
+illinois,il,springfield,11.4e+6,56.3e+3,21,chicago,rockford,peoria,springfield
+indiana,in,indianapolis,5490.0e+3,36.2e+3,19,indianapolis,fort wayne,gary,evansville
+iowa,ia,des moines,2913.0e+3,56.3e+3,29,des moines,cedar rapids,davenport,sioux city
+kansas,ks,topeka,2364.0e+3,82.3e+3,34,wichita,kansas city,topeka,overland park
+kentucky,ky,frankfort,2364.0e+3,82.3e+3,15,louisville,lexington,owensboro,covington
+louisiana,la,baton rouge,4206.0e+3,47.7e+3,18,new orleans,baton rouge,shreveport,metairie
+maine,me,augusta,1125.0e+3,33265,23,portland,lewiston,bangor,auburn
+maryland,md,annapolis,4217.0e+3,10460,7,baltimore,silver spring,dundalk,bethesda
+massachusetts,ma,boston,5737.0e+3,8284,6,boston,worcester,springfield,new bedford
+michigan,mi,lansing,9262.0e+3,58.5e+3,26,detroit,grand rapids,warren,flint
+minnesota,mn,st. paul,4076.0e+3,84.4e+3,32,minneapolis,st. paul,duluth,bloomington
+mississippi,ms,jackson,2520.0e+3,47.7e+3,20,jackson,biloxi,meridian,hattiesburg
+missouri,mo,jefferson city,4916.0e+3,69.7e+3,24,st. louis,kansas city,springfield,independence
+montana,mt,helena,786.7e+3,147.0e+3,41,billings,great falls,butte,missoula
+nebraska,ne,lincoln,1569.0e+3,77.3e+3,37,omaha,lincoln,grand island,north platte
+nevada,nv,carson city,800.5e+3,110.5e+3,36,las vegas,reno,sunrise manor,sparks
+new hampshire,nh,concord,920.6e+3,9279,9,manchester,nashua,concord,portsmouth
+new jersey,nj,trenton,7365.0e+3,7787,3,newark,jersey city,paterson,elizabeth
+new mexico,nm,santa fe,1303.0e+3,121.6e+3,47,albuquerque,santa fe,las cruces,roswell
+new york,ny,albany,17.558e+6,49.1e+3,11,new york,buffalo,rochester,yonkers
+north carolina,nc,raleigh,5882.0e+3,52.67e+3,12,charlotte,greensboro,raleigh,winston-salem
+north dakota,nd,bismarck,652.7e+3,70.7e+3,39,fargo,bismarck,grand forks,minot
+ohio,oh,columbus,10.8e+6,41.3e+3,17,cleveland,columbus,cincinnati,toledo
+oklahoma,ok,oklahoma city,3025.0e+3,69.95e+3,46,oklahoma city,tulsa,lawton,norman
+oregon,or,salem,2633.0e+3,97073,33,portland,eugene,salem,springfield
+pennsylvania,pa,harrisburg,11.863e+6,45308,2,philadelphia,pittsburgh,erie,allentown
+rhode island,ri,providence,947.2e+3,1212,13,providence,warwick,cranston,pawtucket
+south carolina,sc,columbia,3121.8e+3,31.113e+3,8,columbia,charleston,north charleston,greenville
+south dakota,sd,pierre,690.767e+3,77116,40,sioux falls,rapid city,aberdeen,watertown
+tennessee,tn,nashville,4591.0e+3,42.14e+3,16,memphis,nashville,knoxville,chattanooga
+texas,tx,austin,14.229e+6,266.807e+3,28,houston,dallas,san antonio,el paso
+utah,ut,salt lake city,1461.0e+3,84.9e+3,45,salt lake city,provo,west valley,ogden
+vermont,vt,montpelier,511.5e+3,9614,14,burlington,rutland,bennington,essex
+virginia,va,richmond,5346.8e+3,40.76e+3,10,norfolk,virginia beach,richmond,arlington
+washington,wa,olympia,41.132e+5,68.139e+3,42,seattle,spokane,tacoma,bellevue
+west virginia,wv,charleston,1.95e+6,24.2e+3,35,charleston,huntington,wheeling,parkersburg
+wisconsin,wi,madison,4.7e+6,56153,30,milwaukee,madison,green bay,racine
+wyoming,wy,cheyenne,469.557e+3,97.809e+3,44,casper,cheyenne,laramie,rock springs
