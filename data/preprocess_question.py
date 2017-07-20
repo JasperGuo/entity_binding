@@ -3,19 +3,12 @@ import os
 import re
 import json
 from bson import json_util
+from util import read_file
 from preprocess_table import process_value
 
 COLUMN_PATTERN = re.compile("^col__(.*?)__\((\d+), (\d+)\)$")
 CELL_PATTERN = re.compile("^cell__(.*?)__\((\d+), (\d+)\)$")
 TABLE_PATTERN = re.compile("^TABLE__(.*)$")
-
-
-def read_file(file):
-    content = list()
-    with open(file) as f:
-        for line in f:
-            content.append(json.loads(line.strip()))
-    return content
 
 
 def get_table_map_id(table_loc):
