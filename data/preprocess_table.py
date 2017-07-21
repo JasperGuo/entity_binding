@@ -31,6 +31,8 @@ def process_value(value):
     # Replace multiple spaces with single space
     value = value.replace("'", "")
     value = value.replace('"', "")
+    value = value.replace("(", "")
+    value = value.replace(")", "")
     value = re.sub(' +', ' ', value)
     return value
 
