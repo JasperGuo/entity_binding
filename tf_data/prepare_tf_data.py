@@ -5,6 +5,15 @@ from nltk import word_tokenize
 import json
 
 
+"""
+ID:
+    0 - PAD
+    1 - UNK
+"""
+
+UNKNOWN_WORD = 1
+
+
 def read_file(file):
     content = list()
     with open(file) as f:
@@ -21,7 +30,7 @@ def read_vocab(file):
 def lookup_vocab(vocab, word):
     if word in vocab:
         return vocab[word]
-    return 0
+    return UNKNOWN_WORD
 
 
 def table_lookup_vocab(table, word_vocab, char_vocab, data_type_vocab):
@@ -192,6 +201,6 @@ def prepare_question(file, word_vocab_file, char_vocab_file):
 
 
 if __name__ == "__main__":
-    # prepare_tables("..\\data\\training\\tables.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json", ".\\vocab\\data_type.json")
+    prepare_tables("..\\data\\training\\tables.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json", ".\\vocab\\data_type.json")
     prepare_question("..\\data\\training\\questions.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json")
 

@@ -15,7 +15,7 @@ def calc_question_words(question_file, word_vocab):
         words = question["tokenized_sentence"]
         for word in words:
             word_id = lookup_vocab(word_vocab, word)
-            if word_id == 0:
+            if word_id == 1:
                 unknown_word.add(word)
             all_word.add(word)
     print("Total question words: ", len(all_word))
@@ -46,7 +46,7 @@ def calc_table_words(table_file, word_vocab):
 
     for word in all_word:
         word_id = lookup_vocab(word_vocab, word)
-        if word_id == 0:
+        if word_id == 1:
             unknown_word.add(word)
 
     print("Total table words: ", len(all_word))

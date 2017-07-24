@@ -5,11 +5,19 @@ import json
 import codecs
 
 
+"""
+ID:
+    0 - PAD
+    1 - UNK
+"""
+
+
 def read_glove(file, dim=50):
     # Add Unknown
-    word_id = 0
+    # Reserve 0 to PAD
+    word_id = 2
     word_dict = {
-        "UNK": 0
+        "UNK": 1
     }
     word_vector_matrix = [[0.0] * dim]
     with codecs.open(file, "r", encoding="utf8") as f:
@@ -17,10 +25,10 @@ def read_glove(file, dim=50):
             content = line.strip().split(" ")
             word = content[0]
             vector = content[1:]
-            word_id += 1
             assert len(vector) == dim
             word_dict[word] = word_id
             word_vector_matrix.append(vector)
+            word_id += 1
 
     np.save("word_embedding.npy", np.array(word_vector_matrix))
 
@@ -31,7 +39,12 @@ def read_glove(file, dim=50):
 
 
 def prepare_character_vocab(file):
-    char_id = 0
+    """
+    Reserve 0 to PAD
+    :param file:
+    :return:
+    """
+    char_id = 1
     char_dict = dict()
     with open(file, "r") as f:
         for line in f:
@@ -55,7 +68,7 @@ def prepare_data_type_vocab(file):
 
 
 if __name__ == "__main__":
-    # read_glove(".\\vocab\\glove.6B\\glove.6B.50d.txt")
+    read_glove(".\\vocab\\glove.6B\\glove.6B.50d.txt")
     prepare_character_vocab(".\\vocab\\character.txt")
     prepare_data_type_vocab(".\\vocab\\data_type.txt")
 
