@@ -1,2 +1,2 @@
 Training set:
-    acc: 19.7166%
+    acc: 38.7249%

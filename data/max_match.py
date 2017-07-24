@@ -135,7 +135,7 @@ def prob_forward_match(vocab_list, words):
             else:
                 # Match
                 result.append((i, j-1, True, max_match[1], same_score_list))
-                # print(sub_string, "M", vocab_list[max_match[0]])
+                print(sub_string, "M", vocab_list[max_match[0]])
                 i = j
                 break
         else:
@@ -179,7 +179,7 @@ def prob_backward_match(vocab_list, words):
             else:
                 # Match
                 result.append((j, i-1, True, max_match[1], same_score_list))
-                # print(sub_string, "M", vocab_list[max_match[0]])
+                print(sub_string, "M", vocab_list[max_match[0]])
                 i = j
                 break
         else:
@@ -255,7 +255,7 @@ def match_table(question, table_dict):
     # fw_result = forward_match(vocab_list, question["stem"])
     # bw_result = backward_match(vocab_list, question["stem"])
     prob_fw_result = prob_forward_match(vocab_list, question["stem"])
-    # print("=================")
+    print("=================")
     prob_bw_result = prob_backward_match(vocab_list, question["stem"])
     result = cmp_forward_and_backward(prob_fw_result, prob_bw_result)
     sentence = question["stem"]
@@ -264,10 +264,10 @@ def match_table(question, table_dict):
     question.update({
         "table_lookup": matrix
     })
-    # print(prob_bw_result)
-    # print(prob_fw_result)
-    # print(question["question_id"])
-    # print(matrix)
+    print(prob_bw_result)
+    print(prob_fw_result)
+    print(question["question_id"])
+    print(matrix)
     # print("==================================================")
     return question
 
@@ -297,4 +297,4 @@ def main(question_file, table_file, _id=None):
 
 
 if __name__ == "__main__":
-    main("lemmatized_preprocessed_training_questions.txt", "lemmatized_preprocessed_training_tables.txt")
+    main("lemmatized_preprocessed_training_questions.txt", "lemmatized_preprocessed_training_tables.txt", "59646e2e422dcd4188272ef0")
