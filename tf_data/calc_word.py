@@ -1,5 +1,6 @@
 # coding=utf8
 
+import numpy as np
 from nltk import word_tokenize
 from prepare_tf_data import read_file, lookup_vocab, read_vocab
 
@@ -44,7 +45,9 @@ def calc_table_words(table_file, word_vocab):
 
         all_word |= table_words
 
+    length = list()
     for word in all_word:
+        length.append(len(word))
         word_id = lookup_vocab(word_vocab, word)
         if word_id == 1:
             unknown_word.add(word)
@@ -52,6 +55,10 @@ def calc_table_words(table_file, word_vocab):
     print("Total table words: ", len(all_word))
     print("Table unknown words: ", len(unknown_word))
     print("Unknown/all: %f" % (len(unknown_word)/len(all_word)))
+
+    print("Word length:", max(length))
+    print("Mean length: ", np.mean(length))
+    print("Median length: ", np.median(length))
 
 
 if __name__ == "__main__":
