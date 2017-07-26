@@ -20,6 +20,16 @@ def read_vocab(file):
         return json.load(f)
 
 
+class VocabManager:
+    def __init__(self, file):
+        self._vocab = read_vocab(file)
+        self._vocab_size = len(list(self._vocab.keys()))
+
+    @property
+    def size(self):
+        return self._vocab_size
+
+
 class Batch:
     def __init__(self, **kwargs):
         """
@@ -59,6 +69,19 @@ class Batch:
         self.word_character_length = kwargs["word_character_length"]
         self.ground_truth = kwargs["ground_truth"]
         self.exact_match_matrix = kwargs["exact_match_matrix"]
+        self._learning_rate = 0.0
+
+    @property
+    def size(self):
+        return len(self.questions_length)
+
+    @property
+    def learning_rate(self):
+        return self._learning_rate
+
+    @learning_rate.setter
+    def learning_rate(self, rate):
+        self._learning_rate = rate
 
     def _print(self):
         print("Question length: ", self.questions_length, np.array(self.questions_length).shape)
@@ -345,7 +368,7 @@ class DataIterator:
                     word_character_dict[key] = {
                         "wid": wid,
                         "chars": _chars,
-                        "valid_len": len(chars)
+                        "valid_len": len(chars) if len(chars) < self._max_word_length else self._max_word_length
                     }
                     wid += 1
                 tname_char_ids.append(word_character_dict[key]["wid"])
@@ -370,7 +393,7 @@ class DataIterator:
                         word_character_dict[key] = {
                             "wid": wid,
                             "chars": _chars,
-                            "valid_len": len(word_chars)
+                            "valid_len": len(word_chars) if len(word_chars) < self._max_word_length else self._max_word_length
                         }
                         wid += 1
                     chars_per_column.append(word_character_dict[key]["wid"])
@@ -404,7 +427,7 @@ class DataIterator:
                             word_character_dict[key] = {
                                 "wid": wid,
                                 "chars": _chars,
-                                "valid_len": len(word_chars)
+                                "valid_len": len(word_chars) if len(word_chars) < self._max_word_length else self._max_word_length
                             }
                             wid += 1
                         char_ids_per_cell_value.append(word_character_dict[key]["wid"])
@@ -468,9 +491,11 @@ class DataIterator:
         )
 
     def get_batch(self):
+
+        """
         if self._cursor + self._batch_per_epoch > self._size:
             raise IndexError("Index Error")
-
+        """
         questions = self._questions[self._cursor:self._cursor+self._batch_size]
         self._cursor += self._batch_size
         return self._prepare_batch(questions)
@@ -480,9 +505,9 @@ if __name__ == "__main__":
     data_iterator = DataIterator(
         "..\\..\\tf_data\\training\\tables.txt",
         "..\\..\\tf_data\\training\\questions.txt",
+        21,
         20,
-        20,
-        2
+        1
     )
     data_iterator.shuffle()
     batch = data_iterator.get_batch()

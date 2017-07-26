@@ -1,5 +1,5 @@
 name: EntityBinding
-max_question_length:              20
+max_question_length:              21
 max_word_length:                  20
 word_embedding_dim:               50
 char_embedding_dim:               50
@@ -8,7 +8,8 @@ character_rnn_encoder_hidden_dim: 25
 character_rnn_encoder_layer:      1
 combined_embedding_dim:           50
 question_rnn_encoder_hidden_dim:  25
-batch_size:                       30
+question_rnn_encoder_layer:       1
+batch_size:                       1
 epoches:                          300
 gradient_clip:                    5
 dropout:                          0.5
@@ -30,12 +31,16 @@ vocab:
     - tf_data
     - vocab
     - word_dict.json
+  data_type:
+    - tf_data
+    - vocab
+    - data_type.json
 embedding:
   word:
     - tf_data
     - vocab
     - word_embedding.npy
-learning_rate:        0.0001
+learning_rate:        0.001
 log_dir:              log
 result_log:           result_log
 checkpoint_path:      checkpoint

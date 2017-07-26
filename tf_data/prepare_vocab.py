@@ -26,15 +26,17 @@ def read_glove(file, dim=50):
             word = content[0]
             vector = content[1:]
             assert len(vector) == dim
+
+            if word in word_dict:
+                print(word)
+
             word_dict[word] = word_id
             word_vector_matrix.append(vector)
             word_id += 1
-
     np.save("word_embedding.npy", np.array(word_vector_matrix))
 
     with open("word_dict.json", "w") as f:
         f.write(json.dumps(word_dict))
-
     print(len(word_vector_matrix))
 
 
@@ -48,9 +50,10 @@ def prepare_character_vocab(file):
     char_dict = dict()
     with open(file, "r") as f:
         for line in f:
+            if line.strip() in char_dict:
+                print(line.strip())
             char_dict[line.strip()] = char_id
             char_id += 1
-
     with open("char_dict.json", "w") as f:
         f.write(json.dumps(char_dict))
 
