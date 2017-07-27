@@ -1,5 +1,9 @@
 WikiTable/*
 CoNLL_2000_chunking/*
-WikiTable/*
+NLLD_parse_table/*
+
+!WikiTable/parse_question.py
+!WikiTable/parse_table.py
+!WikiTable/parse_test_questions.py
 
 

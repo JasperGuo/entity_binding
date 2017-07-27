@@ -10,6 +10,7 @@ import tensorflow as tf
 from model import Model
 from data_iterator import DataIterator, VocabManager
 
+np.set_printoptions(threshold=np.nan)
 
 def read_configuration(path):
     with open(path, "r") as f:
@@ -111,33 +112,50 @@ class ModelRuntime:
         g = np.array(ground_truth)
         result = np.sum(np.abs(p - g), axis=-1)
         correct = 0
-        for r in result:
+        for idx, r in enumerate(result):
             if r == 0:
                 correct += 1
+                # tqdm.write(str(p[r]))
+                # tqdm.write(str(g[r]))
+                # tqdm.write("======================================")
         return correct
 
-    def log(self, file, batch, predictions):
+    def log(self, file, batch, predictions, scores):
         with open(file, "a") as f:
             string = ""
             for t, p in zip(batch.ground_truth, predictions):
                 string = "=======================\n"
                 string += ("t: " + str(t) + "\n")
                 string += ("p: " + str(p) + "\n")
+                string += ("s: " + str(scores) + "\n")
             f.write(string)
+
+    def _epoch_log(self, file, num_epoch, train_accuracy, dev_accuracy, average_loss):
+        """
+        Log epoch
+        :param file:
+        :param num_epoch:
+        :param train_accuracy:
+        :param dev_accuracy:
+        :param average_loss:
+        :return:
+        """
+        with open(file, "a") as f:
+            f.write("epoch: %d, train_accuracy: %f, dev_accuracy: %f, average_loss: %f\n" % (num_epoch, train_accuracy, dev_accuracy, average_loss))
 
     def train(self):
         self._batch = None
         try:
-            best_operation_accuracy = 0
+            best_accuracy = 0
             last_updated_epoch = 0
             epoch_log_file = os.path.join(self._result_log_base_path, "epoch_result.log")
-            file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + ".log")
             curr_learning = self._config["learning_rate"]
             for epoch in tqdm(range(self._epoches)):
                 self._train_data_iterator.shuffle()
                 losses = list()
                 total = 0
                 train_correct = 0
+                file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + "_" + str(epoch) + ".log")
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
                     batch.learning_rate = curr_learning
@@ -154,9 +172,24 @@ class ModelRuntime:
                         ground_truth=batch.ground_truth
                     )
                     losses.append(loss)
-                    self.log(file=file, batch=batch, predictions=predictions)
+                    if epoch % 10 == 0:
+                        self.log(file=file, batch=batch, predictions=predictions, scores=scores)
+
+                train_acc = train_correct / total
+                if train_acc > best_accuracy:
+                    self._saver.save(self._session, self._best_checkpoint_file)
+
                 average_loss = np.average(np.array(losses))
-                tqdm.write("epoch: %d, loss: %f, train_acc: %f" % (epoch, average_loss, train_correct/total))
+                tqdm.write("epoch: %d, loss: %f, train_acc: %f" % (epoch, average_loss, train_acc))
+
+                self._epoch_log(
+                    file=epoch_log_file,
+                    num_epoch=epoch,
+                    train_accuracy=train_acc,
+                    dev_accuracy=0.0,
+                    average_loss=average_loss
+                )
+
         except (KeyboardInterrupt, SystemExit):
             # If the user press Ctrl+C...
             # Save the model
