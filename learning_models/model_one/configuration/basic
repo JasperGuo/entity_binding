@@ -1,5 +1,5 @@
 name: EntityBinding
-max_question_length:              21
+max_question_length:              22
 max_word_length:                  22
 word_embedding_dim:               50
 char_embedding_dim:               50
@@ -15,11 +15,13 @@ cell_value_encoder_layer_1_dim:   100
 cell_value_encoder_layer_2_dim:   100
 table_name_and_column_name_transform_dim: 100
 scoring_weight_dim:               100
-batch_size:                       1
+batch_size:                       18
+test_batch_size:                  20
 epoches:                          300
 gradient_clip:                    5
 dropout:                          0.5
 training:
+  batches:                        training_batch
   question:
     - tf_data
     - training
@@ -29,6 +31,7 @@ training:
     - training
     - tables.txt
 test:
+  batches:                        test_batch
   question:
     - tf_data
     - test
@@ -38,6 +41,7 @@ test:
     - test
     - tables.txt
 dev:
+  batches:                        test_batch
   question:
     - tf_data
     - test

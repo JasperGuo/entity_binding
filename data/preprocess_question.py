@@ -8,7 +8,7 @@ from preprocess_table import process_value
 
 COLUMN_PATTERN = re.compile("^col__(.*?)__\((\d+), (\d+)\)$")
 CELL_PATTERN = re.compile("^cell__(.*?)__\((\d+), (\d+)\)$")
-TABLE_PATTERN = re.compile("^TABLE__(.*)$")
+TABLE_PATTERN = re.compile("^TAB_(.*)$")
 
 
 def get_table_map_id(table_loc):
@@ -119,4 +119,4 @@ def main(file, table_file):
 
 
 if __name__ == "__main__":
-    main("test_questions.txt", "preprocessed_test_tables.txt")
+    main("training_questions.txt", "preprocessed_training_tables.txt")

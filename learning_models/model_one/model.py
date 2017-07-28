@@ -39,7 +39,6 @@ class Model:
             is_test=False
     ):
         self._is_test = is_test
-        self._batch_size = opts["batch_size"]
 
         self._word_embedding_dim = opts["word_embedding_dim"]
         self._char_embedding_dim = opts["char_embedding_dim"]
@@ -67,6 +66,12 @@ class Model:
         self._char_vocab_size = char_vocab_size
         self._column_data_type_num = column_data_type_num
         self._pretrain_word_embedding = pretrain_word_embedding
+
+        if self._is_test:
+            self._batch_size = opts["test_batch_size"]
+        else:
+            self._batch_size = opts["batch_size"]
+
 
         self._build_graph()
 

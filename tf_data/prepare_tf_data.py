@@ -139,7 +139,7 @@ def prepare_tables(file, word_vocab_file, char_vocab_file, data_type_file):
         })
         result.append(json.dumps(table_info))
 
-    with open(".\\training\\tables.txt", "w") as f:
+    with open(".\\test\\tables.txt", "w") as f:
         f.write('\n'.join(result))
 
 
@@ -196,11 +196,11 @@ def prepare_question(file, word_vocab_file, char_vocab_file):
         })
         result.append(json.dumps(question_info))
     # print(len(result))
-    with open(".\\training\\questions.txt", "w") as f:
+    with open(".\\test\\questions.txt", "w") as f:
         f.write('\n'.join(result))
 
 
 if __name__ == "__main__":
-    prepare_tables("..\\data\\training\\tables.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json", ".\\vocab\\data_type.json")
-    prepare_question("..\\data\\training\\questions.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json")
+    prepare_tables("..\\data\\test\\tables.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json", ".\\vocab\\data_type.json")
+    prepare_question("..\\data\\test\\questions.txt", ".\\vocab\\word_dict.json", ".\\vocab\\char_dict.json")
 

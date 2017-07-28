@@ -5,6 +5,7 @@ import copy
 import numpy as np
 import json
 import random
+import pickle
 
 
 def read_file(file):
@@ -505,16 +506,51 @@ class DataIterator:
         self._cursor += self._batch_size
         return self._prepare_batch(questions)
 
+    def save_batches(self, name):
+        batches = list()
+        for i in range(self.batch_per_epoch):
+            batches.append(self.get_batch())
+        with open(name, "wb") as f:
+            pickle.dump(batches, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+class BatchIterator:
+
+    def deserialize_batch(self, file):
+        with open(file, "rb") as f:
+            return pickle.load(f)
+
+    def __init__(self, serialized_file):
+        self._batches = self.deserialize_batch(serialized_file)
+        self._batch_size = self._batches[0].size
+        self._batch_per_epoch = len(self._batches)
+        self._cursor = 0
+
+    @property
+    def batch_size(self):
+        return self._batch_size
+
+    @property
+    def batch_per_epoch(self):
+        return self._batch_per_epoch
+
+    def shuffle(self):
+        random.shuffle(self._batches)
+        self._cursor = 0
+
+    def get_batch(self):
+        assert self._cursor < self._batch_per_epoch
+        batch = self._batches[self._cursor]
+        self._cursor += 1
+        return batch
 
 if __name__ == "__main__":
     data_iterator = DataIterator(
         "..\\..\\tf_data\\training\\tables.txt",
         "..\\..\\tf_data\\training\\questions.txt",
-        21,
-        20,
-        1
+        22,
+        22,
+        20
     )
-    data_iterator.shuffle()
-    batch = data_iterator.get_batch()
-    batch._print()
+    data_iterator.save_batches("training_batch")
 

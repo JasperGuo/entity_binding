@@ -106,5 +106,5 @@ def process_tables(file):
 
 
 if __name__ == "__main__":
-    process_tables("preprocessed_test_tables.txt")
-    process_questions("preprocessed_test_questions.txt")
+    process_tables("preprocessed_training_tables.txt")
+    process_questions("preprocessed_training_questions.txt")

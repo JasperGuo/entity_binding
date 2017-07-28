@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from model import Model
-from data_iterator import DataIterator, VocabManager
+from data_iterator import VocabManager, Batch, BatchIterator
 
 np.set_printoptions(threshold=np.nan)
 
@@ -123,10 +123,9 @@ class ModelRuntime:
     def log(self, file, batch, predictions, is_detail=False):
         with open(file, "a") as f:
             string = ""
-            for t, p, qid in zip(batch.ground_truth, predictions, batch.questions_id):
-                result = np.sum(np.abs(np.array(p) - np.array(g)), axis=-1)
-
-                string = "=======================\n"
+            for t, p, qid in zip(batch.ground_truth, predictions, batch.questions_ids):
+                result = np.sum(np.abs(np.array(p) - np.array(t)), axis=-1)
+                string += "=======================\n"
                 string += ("id: " + str(qid) + "\n")
                 string += ("t: " + str(t) + "\n")
                 string += ("p: " + str(p) + "\n")
@@ -172,7 +171,7 @@ class ModelRuntime:
                 )
 
         accuracy = float(correct)/float(total)
-        # tqdm.write("test_acc: %f" % accuracy)
+        tqdm.write("test_acc: %f" % accuracy)
         return accuracy
 
     def train(self):
@@ -239,28 +238,16 @@ class ModelRuntime:
 
     def run(self, is_test=False, is_log=False):
         if is_test:
-            self._test_data_iterator = DataIterator(
-                tables_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["test"]["table"]))),
-                questions_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["test"]["question"]))),
-                max_question_length=self._config["max_question_length"],
-                max_word_length=self._config["max_word_length"],
-                batch_size=self._config["batch_size"]
+            self._test_data_iterator = BatchIterator(
+                serialized_file=self._config["test"]["batches"]
             )
-            self.test(self._test_data_iterator)
+            self.test(self._test_data_iterator, True)
         else:
-            self._train_data_iterator = DataIterator(
-                tables_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["training"]["table"]))),
-                questions_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["training"]["question"]))),
-                max_question_length=self._config["max_question_length"],
-                max_word_length=self._config["max_word_length"],
-                batch_size=self._config["batch_size"]
+            self._train_data_iterator = BatchIterator(
+                serialized_file=self._config["training"]["batches"]
             )
-            self._dev_data_iterator = DataIterator(
-                tables_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["dev"]["table"]))),
-                questions_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["dev"]["question"]))),
-                max_question_length=self._config["max_question_length"],
-                max_word_length=self._config["max_word_length"],
-                batch_size=self._config["batch_size"]
+            self._dev_data_iterator = BatchIterator(
+                serialized_file=self._config["dev"]["batches"]
             )
             self.train()
 
