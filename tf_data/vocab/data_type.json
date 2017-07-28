@@ -1,1 +1,1 @@
-{"STRING": 0, "NUMERIC": 1, "DATE": 2}
+{"DATE": 2, "NUMERIC": 1, "STRING": 0}

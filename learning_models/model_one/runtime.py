@@ -120,14 +120,18 @@ class ModelRuntime:
                 # tqdm.write("======================================")
         return correct
 
-    def log(self, file, batch, predictions, scores):
+    def log(self, file, batch, predictions, is_detail=False):
         with open(file, "a") as f:
             string = ""
-            for t, p in zip(batch.ground_truth, predictions):
+            for t, p, qid in zip(batch.ground_truth, predictions, batch.questions_id):
+                result = np.sum(np.abs(np.array(p) - np.array(g)), axis=-1)
+
                 string = "=======================\n"
+                string += ("id: " + str(qid) + "\n")
                 string += ("t: " + str(t) + "\n")
                 string += ("p: " + str(p) + "\n")
-                string += ("s: " + str(scores) + "\n")
+                string += ("Result: " + str(result == 0) + "\n")
+                # string += ("s: " + str(scores) + "\n")
             f.write(string)
 
     def _epoch_log(self, file, num_epoch, train_accuracy, dev_accuracy, average_loss):
@@ -143,11 +147,37 @@ class ModelRuntime:
         with open(file, "a") as f:
             f.write("epoch: %d, train_accuracy: %f, dev_accuracy: %f, average_loss: %f\n" % (num_epoch, train_accuracy, dev_accuracy, average_loss))
 
+    def test(self, data_iterator, is_log=False):
+        tqdm.write("Testing...")
+        total = 0
+        correct = 0
+        file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + ".log")
+        for i in tqdm(range(data_iterator.batch_per_epoch)):
+            batch = data_iterator.get_batch()
+            predictions, feed_dict = self._test_model.predict(batch)
+            predictions = self._session.run(predictions, feed_dict=feed_dict)
+
+            correct += self._check_predictions(
+                predictions=predictions,
+                ground_truth=batch.ground_truth
+            )
+
+            total += batch.size
+
+            if is_log:
+                self.log(
+                    file=file,
+                    batch=batch,
+                    predictions=predictions
+                )
+
+        accuracy = float(correct)/float(total)
+        # tqdm.write("test_acc: %f" % accuracy)
+        return accuracy
+
     def train(self):
-        self._batch = None
         try:
             best_accuracy = 0
-            last_updated_epoch = 0
             epoch_log_file = os.path.join(self._result_log_base_path, "epoch_result.log")
             curr_learning = self._config["learning_rate"]
             for epoch in tqdm(range(self._epoches)):
@@ -159,8 +189,6 @@ class ModelRuntime:
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
                     batch.learning_rate = curr_learning
-                    self._batch = batch
-                    # batch._print()
                     scores, predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
                     scores, predictions, loss, optimizer = self._session.run(
                         (scores, predictions, loss, optimizer),
@@ -172,21 +200,28 @@ class ModelRuntime:
                         ground_truth=batch.ground_truth
                     )
                     losses.append(loss)
+                    """
                     if epoch % 10 == 0:
-                        self.log(file=file, batch=batch, predictions=predictions, scores=scores)
+                        self.log(file=file, batch=batch, predictions=predictions)
+                    """
 
                 train_acc = train_correct / total
-                if train_acc > best_accuracy:
-                    self._saver.save(self._session, self._best_checkpoint_file)
+
+                self._dev_data_iterator.shuffle()
+                dev_accuracy = self.test(self._dev_data_iterator, is_log=False)
 
                 average_loss = np.average(np.array(losses))
-                tqdm.write("epoch: %d, loss: %f, train_acc: %f" % (epoch, average_loss, train_acc))
+                tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f" % (epoch, average_loss, train_acc, dev_accuracy))
+
+                if dev_accuracy > best_accuracy:
+                    best_accuracy = dev_accuracy
+                    self._saver.save(self._session, self._best_checkpoint_file)
 
                 self._epoch_log(
                     file=epoch_log_file,
                     num_epoch=epoch,
                     train_accuracy=train_acc,
-                    dev_accuracy=0.0,
+                    dev_accuracy=dev_accuracy,
                     average_loss=average_loss
                 )
 
@@ -201,7 +236,6 @@ class ModelRuntime:
             self._saver.save(self._session, self._checkpoint_file)
         except ValueError as e:
             print(e)
-            self._batch._print()
 
     def run(self, is_test=False, is_log=False):
         if is_test:
@@ -212,6 +246,7 @@ class ModelRuntime:
                 max_word_length=self._config["max_word_length"],
                 batch_size=self._config["batch_size"]
             )
+            self.test(self._test_data_iterator)
         else:
             self._train_data_iterator = DataIterator(
                 tables_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["training"]["table"]))),
@@ -220,8 +255,6 @@ class ModelRuntime:
                 max_word_length=self._config["max_word_length"],
                 batch_size=self._config["batch_size"]
             )
-            self.train()
-            """
             self._dev_data_iterator = DataIterator(
                 tables_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["dev"]["table"]))),
                 questions_file=os.path.abspath(os.path.join(*([self._base_path] + self._config["dev"]["question"]))),
@@ -229,7 +262,7 @@ class ModelRuntime:
                 max_word_length=self._config["max_word_length"],
                 batch_size=self._config["batch_size"]
             )
-            """
+            self.train()
 
 
 if __name__ == "__main__":

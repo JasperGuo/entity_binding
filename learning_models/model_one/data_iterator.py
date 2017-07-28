@@ -52,6 +52,7 @@ class Batch:
         ground_truth                [batch_size, max_question_length]
         exact_match_matrix          [batch_size, max_question_length, None]
         """
+        self.questions_ids = kwargs["questions_id"]
         self.questions_length = kwargs["questions_length"]
         self.questions_char_ids = kwargs["questions_char_ids"]
         self.questions_word_ids = kwargs["questions_word_ids"]
@@ -282,8 +283,11 @@ class DataIterator:
         questions_word_ids = list()
         # Shape: [batch_size]
         questions_length = list()
+        # qids:
+        questions_id = list()
 
         for q in questions:
+            questions_id.append(q["qid"])
             tables.append(self._tables_dict[q["table_map_id"]])
             temp = list()
             for word_chars in q["question_char_ids"]:
@@ -487,7 +491,8 @@ class DataIterator:
             cell_value_length=cell_value_length,
             column_data_type=column_data_type,
             word_character_matrix=word_character_matrix,
-            word_character_length=word_character_length
+            word_character_length=word_character_length,
+            questions_id=questions_id
         )
 
     def get_batch(self):

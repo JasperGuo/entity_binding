@@ -62,5 +62,5 @@ def calc_table_words(table_file, word_vocab):
 
 
 if __name__ == "__main__":
-    calc_table_words("..\\data\\training\\tables.txt", ".\\vocab\\word_dict.json")
-    calc_question_words("..\\data\\training\\questions.txt", ".\\vocab\\word_dict.json")
+    calc_table_words("..\\data\\test\\tables.txt", ".\\vocab\\word_dict.json")
+    calc_question_words("..\\data\\test\\questions.txt", ".\\vocab\\word_dict.json")
