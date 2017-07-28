@@ -12,6 +12,7 @@ from data_iterator import VocabManager, Batch, BatchIterator
 
 np.set_printoptions(threshold=np.nan)
 
+
 def read_configuration(path):
     with open(path, "r") as f:
         return yaml.load(f)
@@ -123,12 +124,15 @@ class ModelRuntime:
     def log(self, file, batch, predictions, is_detail=False):
         with open(file, "a") as f:
             string = ""
-            for t, p, qid in zip(batch.ground_truth, predictions, batch.questions_ids):
+            for t, p, qid, cv, table_id in zip(batch.ground_truth, predictions, batch.questions_ids, batch.cell_value_length, batch.table_map_ids):
                 result = np.sum(np.abs(np.array(p) - np.array(t)), axis=-1)
                 string += "=======================\n"
                 string += ("id: " + str(qid) + "\n")
-                string += ("t: " + str(t) + "\n")
-                string += ("p: " + str(p) + "\n")
+                string += ("tid: " + str(table_id) + "\n")
+                string += ("max_column: " + str(len(cv)) + "\n")
+                string += ("max_cell_value_per_col: " + str(len(cv[0])) + "\n")
+                string += ("t: " + (', '.join([str(i) for i in t])) + "\n")
+                string += ("p: " + (', '.join([str(i) for i in p])) + "\n")
                 string += ("Result: " + str(result == 0) + "\n")
                 # string += ("s: " + str(scores) + "\n")
             f.write(string)

@@ -54,6 +54,7 @@ class Batch:
         exact_match_matrix          [batch_size, max_question_length, None]
         """
         self.questions_ids = kwargs["questions_id"]
+        self.table_map_ids = kwargs["table_map_ids"]
         self.questions_length = kwargs["questions_length"]
         self.questions_char_ids = kwargs["questions_char_ids"]
         self.questions_word_ids = kwargs["questions_word_ids"]
@@ -286,9 +287,12 @@ class DataIterator:
         questions_length = list()
         # qids:
         questions_id = list()
+        # table_map_id
+        table_map_ids = list()
 
         for q in questions:
             questions_id.append(q["qid"])
+            table_map_ids.append(q["table_map_id"])
             tables.append(self._tables_dict[q["table_map_id"]])
             temp = list()
             for word_chars in q["question_char_ids"]:
@@ -481,6 +485,7 @@ class DataIterator:
             questions_char_ids=questions_char_ids,
             ground_truth=ground_truth,
             exact_match_matrix=exact_match_matrix,
+            table_map_ids=table_map_ids,
             tables_name_length=tables_name_length,
             tables_name_char_ids=tables_name_char_ids,
             tables_name_word_ids=tables_name_word_ids,
@@ -546,11 +551,11 @@ class BatchIterator:
 
 if __name__ == "__main__":
     data_iterator = DataIterator(
-        "..\\..\\tf_data\\test\\tables.txt",
-        "..\\..\\tf_data\\test\\questions.txt",
+        "..\\..\\tf_data\\training\\tables.txt",
+        "..\\..\\tf_data\\training\\questions.txt",
         22,
         22,
-        20
+        18
     )
-    data_iterator.save_batches("test_batch")
+    data_iterator.save_batches("training_batch")
 

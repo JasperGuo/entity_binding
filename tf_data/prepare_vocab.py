@@ -72,7 +72,7 @@ def prepare_data_type_vocab(file):
 
 if __name__ == "__main__":
     read_glove(".\\vocab\\glove.6B\\glove.6B.50d.txt")
-    prepare_character_vocab(".\\vocab\\character.txt")
-    prepare_data_type_vocab(".\\vocab\\data_type.txt")
+    # prepare_character_vocab(".\\vocab\\character.txt")
+    # prepare_data_type_vocab(".\\vocab\\data_type.txt")
 
 
