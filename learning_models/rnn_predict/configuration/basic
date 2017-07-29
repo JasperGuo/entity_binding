@@ -1,0 +1,75 @@
+name: EntityBinding
+max_question_length:              22
+max_word_length:                  22
+word_embedding_dim:               50
+char_embedding_dim:               50
+data_type_embedding_dim:          20
+character_rnn_encoder_hidden_dim: 25
+character_rnn_encoder_layer:      1
+combined_embedding_dim:           50
+question_rnn_encoder_hidden_dim:  100
+question_rnn_encoder_layer:       1
+highway_transform_layer_1_dim:    100
+highway_transform_layer_2_dim:    100
+cell_value_encoder_layer_1_dim:   100
+cell_value_encoder_layer_2_dim:   100
+table_name_and_column_name_transform_dim: 100
+predict_rnn_decoder_hidden_dim:   100
+scoring_weight_dim:               100
+batch_size:                       18
+test_batch_size:                  20
+epoches:                          300
+gradient_clip:                    5
+dropout:                          0.5
+training:
+  batches:                        training_batch
+  question:
+    - tf_data
+    - training
+    - questions.txt
+  table:
+    - tf_data
+    - training
+    - tables.txt
+test:
+  batches:                        test_batch
+  question:
+    - tf_data
+    - test
+    - questions.txt
+  table:
+    - tf_data
+    - test
+    - tables.txt
+dev:
+  batches:                        test_batch
+  question:
+    - tf_data
+    - test
+    - questions.txt
+  table:
+    - tf_data
+    - test
+    - tables.txt
+vocab:
+  character:
+    - tf_data
+    - vocab
+    - char_dict.json
+  word:
+    - tf_data
+    - vocab
+    - word_dict.json
+  data_type:
+    - tf_data
+    - vocab
+    - data_type.json
+embedding:
+  word:
+    - tf_data
+    - vocab
+    - word_embedding.npy
+learning_rate:        0.0001
+log_dir:              log
+result_log:           result_log
+checkpoint_path:      checkpoint
