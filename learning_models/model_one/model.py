@@ -349,10 +349,14 @@ class Model:
         :return:
         """
         with tf.name_scope("combine_word_and_character_embedding"):
+            dropout_layer = tf.nn.dropout(
+                x=tf.concat(values=[word_embedded, character_embedded], axis=-1),
+                keep_prob=self._dropout_keep_prob
+            )
             return tf.nn.relu(
                 tf.add(
                     tf.matmul(
-                        a=tf.concat(values=[word_embedded, character_embedded], axis=-1),
+                        a=dropout_layer,
                         b=params["W"]
                     ),
                     params["b"]
@@ -423,11 +427,17 @@ class Model:
             # Shape: [batch_size, max_question_length, question_rnn_encoder_hidden_dim*2]
             question_rnn_outputs = tf.concat(values=[output_fw, output_bw], axis=-1)
             with tf.variable_scope("highway_transform"):
-                layer_1 = tf.layers.dense(
-                    inputs=tf.reshape(
+
+                dropout_layer = tf.nn.dropout(
+                    x=tf.reshape(
                         tf.concat(values=[question_rnn_outputs, combined_embedded], axis=-1),
                         shape=[-1, self._question_rnn_encoder_hidden_dim * 2 + self._combined_embedding_dim]
                     ),
+                    keep_prob=self._dropout_keep_prob
+                )
+
+                layer_1 = tf.layers.dense(
+                    inputs=dropout_layer,
                     units=self._highway_transform_layer_1_dim,
                     activation=tf.nn.relu,
                     name="highway_transform_layer_1"
@@ -584,14 +594,16 @@ class Model:
                 ),
                 shape=[-1, self._data_type_embedding_dim + self._combined_embedding_dim + self._combined_embedding_dim]
             )
-
+            dropout_layer = tf.nn.dropout(
+                x=rich_embedding,
+                keep_prob=self._dropout_keep_prob
+            )
             layer_1 = tf.layers.dense(
-                inputs=rich_embedding,
+                inputs=dropout_layer,
                 units=self._cell_value_encoder_layer_1_dim,
                 activation=tf.nn.relu,
                 name="encode_cell_value_layer_1"
             )
-
             layer_2 = tf.layers.dense(
                 inputs=layer_1,
                 units=self._cell_value_encoder_layer_2_dim,
@@ -881,11 +893,17 @@ class Model:
             ),
             shape=[self._batch_size, self._max_question_length]
         )
+        vars = tf.trainable_variables()
+        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in vars
+                            if 'bias' not in v.name]) * 0.001
         log_probs = tf.log(probs)
-        self._loss = tf.negative(
-            tf.reduce_mean(
-                tf.reduce_sum(log_probs, axis=1)
-            )
+        self._loss = tf.add(
+            tf.negative(
+                tf.reduce_mean(
+                    tf.reduce_sum(log_probs, axis=1)
+                )
+            ),
+            l2_loss
         )
 
         with tf.name_scope("back_propagation"):
