@@ -53,6 +53,7 @@ class Model:
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
         self._scoring_weight_dim = opts["scoring_weight_dim"]
+        self._attention_weight_dim = opts["attention_weight_dim"]
 
         self._highway_transform_layer_1_dim = opts["highway_transform_layer_1_dim"]
         self._highway_transform_layer_2_dim = opts["highway_transform_layer_2_dim"]
@@ -414,7 +415,7 @@ class Model:
                 bw_cell = tf.contrib.rnn.MultiRNNCell(
                     [bw_cell] * self._question_rnn_encoder_layer
                 )
-        with tf.name_scope("encode_question"):
+        with tf.name_scope("encode_character"):
             with tf.variable_scope("BiGRU_encode_question"):
                 (output_fw, output_bw), (output_states_fw, output_states_bw) = tf.nn.bidirectional_dynamic_rnn(
                     cell_fw=fw_cell,
@@ -428,11 +429,16 @@ class Model:
             question_rnn_outputs = tf.concat(values=[output_fw, output_bw], axis=-1)
             with tf.variable_scope("highway_transform"):
 
-                layer_1 = tf.layers.dense(
-                    inputs=tf.reshape(
+                dropout_layer = tf.nn.dropout(
+                    x=tf.reshape(
                         tf.concat(values=[question_rnn_outputs, combined_embedded], axis=-1),
                         shape=[-1, self._question_rnn_encoder_hidden_dim * 2 + self._combined_embedding_dim]
                     ),
+                    keep_prob=self._dropout_keep_prob
+                )
+
+                layer_1 = tf.layers.dense(
+                    inputs=dropout_layer,
                     units=self._highway_transform_layer_1_dim,
                     activation=tf.nn.relu,
                     name="highway_transform_layer_1"
@@ -710,6 +716,136 @@ class Model:
         :param question_representation: [batch_size, max_question_length, table_extra_transform_dim]
         :return:
         """
+        with tf.variable_scope("attention_weights"):
+            w_q = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[
+                    self._table_extra_transform_dim,
+                    self._attention_weight_dim
+                ],
+                name="w_q"
+            )
+            w_t = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[
+                    self._table_extra_transform_dim,
+                    self._attention_weight_dim
+                ],
+                name="w_t"
+            )
+            bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[
+                    1,
+                    self._attention_weight_dim
+                ],
+                name="bias"
+            )
+            v = tf.get_variable(
+                initializer=tf.truncated_normal_initializer(),
+                shape=[
+                    self._attention_weight_dim,
+                    1
+                ],
+                name="v"
+            )
+
+        with tf.name_scope("attention_scoring"):
+
+            # Shape: [batch_size*table_size*max_question_length, attention_weight_dim]
+            temp_table = tf.reshape(
+                tf.tile(
+                    tf.expand_dims(
+                        tf.reshape(
+                            tf.matmul(
+                                a=tf.reshape(table_representation, shape=[-1, self._table_extra_transform_dim]),
+                                b=w_t
+                            ),
+                            shape=[self._batch_size, self._table_size, self._attention_weight_dim]
+                        ),
+                        axis=2
+                    ),
+                    multiples=[1, 1, self._max_question_length, 1]
+                ),
+                shape=[self._batch_size*self._table_size*self._max_question_length, self._attention_weight_dim]
+            )
+
+            # Shape: [batch_size*max_question_length*table_size, attention_weight_dim]
+            temp_question = tf.reshape(
+                tf.tile(
+                    tf.reshape(
+                        tf.matmul(
+                            a=tf.reshape(question_representation, shape=[-1, self._table_extra_transform_dim]),
+                            b=w_q
+                        ),
+                        shape=[self._batch_size, self._max_question_length, self._attention_weight_dim]
+                    ),
+                    multiples=[1, self._table_size, 1]
+                ),
+                shape=[self._batch_size*self._table_size*self._max_question_length, self._attention_weight_dim]
+            )
+
+            # Shape: [batch_size, table_size, max_question_length]
+            scores = tf.nn.softmax(
+                tf.reshape(
+                    tf.tanh(
+                        tf.matmul(
+                            a=tf.add(tf.add(temp_question, temp_table), bias),
+                            b=v
+                        )
+                    ),
+                    shape=[self._batch_size, self._table_size, self._max_question_length]
+                ),
+                dim=-1
+            )
+
+            # Shape: [batch_size, table_size, table_extra_transform_dim]
+            attened_questions = tf.reduce_sum(
+                tf.reshape(
+                    tf.multiply(
+                        x=tf.reshape(
+                            scores,
+                            shape=[self._batch_size*self._table_size*self._max_question_length, 1]
+                        ),
+                        y=tf.reshape(
+                            tf.tile(question_representation, multiples=[1, self._table_size, 1]),
+                            shape=[-1, self._table_extra_transform_dim]
+                        )
+                    ),
+                    shape=[self._batch_size, self._table_size, self._max_question_length, self._table_extra_transform_dim]
+                ),
+                axis=2
+            )
+            return attened_questions
+
+    def _fuse_table_representation_and_attened_question(self, table_representation, attened_question):
+        """
+        :param table_representation: [batch_size, table_size, table_extra_transform_dim]
+        :param attened_question:     [batch_size, table_size, table_extra_transform_dim]
+        :return:
+            [batch_size, table_size, table_extra_transform_dim]
+        """
+        with tf.variable_scope("fuse_table_representation"):
+            dropout_layer = tf.nn.dropout(
+                x=tf.concat([table_representation, attened_question], axis=-1),
+                keep_prob=self._dropout_keep_prob
+            )
+            return tf.reshape(
+                tf.layers.dense(
+                    inputs=dropout_layer,
+                    units=self._table_extra_transform_dim,
+                    activation=tf.nn.relu,
+                    kernel_initializer=tf.contrib.layers.xavier_initializer()
+                ),
+                shape=[self._batch_size, self._table_size, self._table_extra_transform_dim]
+            )
+
+    def _calc_neural_scores(self, table_representation, question_representation):
+        """
+        :param table_representation:    [batch_size, table_size, table_extra_transform_dim]
+        :param question_representation: [batch_size, max_question_length, table_extra_transform_dim]
+        :return:
+        """
         # Shape: [batch_size, max_question_length*self.table_size, table_extra_transform_dim]
         expanded_table_representation = tf.tile(
             table_representation,
@@ -728,7 +864,7 @@ class Model:
             shape=[self._batch_size, self._max_question_length*self._table_size, self._table_extra_transform_dim]
         )
 
-        with tf.name_scope("attention_scoring"):
+        with tf.name_scope("neural_scoring"):
             # Shape: [batch_size, question_length*table_size]
             return tf.reshape(
                 tf.reduce_sum(
@@ -741,29 +877,15 @@ class Model:
                 shape=[self._batch_size, self._max_question_length, self._table_size]
             )
 
-    def _calc_scores(self, attention_scores):
+    def _calc_scores(self, neural_scores):
         """
-        Combine exact match scores & attention scores
-        :param attention_scores:   [batch_size, max_question_length, table_size]
+        Combine exact match scores & neural_scores
+        :param neural_scores:   [batch_size, max_question_length, table_size]
         :return:
         """
         with tf.variable_scope("scoring"):
-            alpha = tf.get_variable(
-                initializer=tf.random_uniform_initializer(
-                    minval=0,
-                    maxval=1
-                ),
-                shape=[1],
-                dtype=tf.float32,
-                name="alpha"
-            )
-            # Shape: [batch_size, max_question_length, table_size]
-            scores = tf.add(
-                alpha * tf.nn.softmax(self._exact_match_matrix, dim=-1),
-                (1 - alpha) * tf.nn.softmax(attention_scores, dim=-1)
-            )
 
-            return tf.nn.softmax(scores, dim=-1)
+            return tf.nn.softmax(neural_scores, dim=-1)
 
     def _calc_ground_truth_index(self):
         """
@@ -854,7 +976,18 @@ class Model:
         )
 
         # Shape: [batch_size, max_question_length, table_size]
-        self._neural_scores = self._calc_attention(
+        attened_questions = self._calc_attention(
+            table_representation=table_representation,
+            question_representation=question_representation
+        )
+
+        # Shape: [batch_size, table_size, table_extra_transform_dim]
+        table_representation = self._fuse_table_representation_and_attened_question(
+            table_representation=table_representation,
+            attened_question=attened_questions
+        )
+
+        self._neural_scores = self._calc_neural_scores(
             table_representation=table_representation,
             question_representation=question_representation
         )

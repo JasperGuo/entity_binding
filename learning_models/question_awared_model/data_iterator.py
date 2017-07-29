@@ -79,6 +79,12 @@ class Batch:
         return len(self.questions_length)
 
     @property
+    def table_size(self):
+        max_column_length = len(self.column_name_length[0])
+        max_cell_per_col = len(self.cell_value_length[0][0])
+        return 3 + max_column_length + max_column_length * max_cell_per_col
+
+    @property
     def learning_rate(self):
         return self._learning_rate
 
