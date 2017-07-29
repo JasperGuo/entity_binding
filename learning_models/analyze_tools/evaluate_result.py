@@ -8,6 +8,7 @@ import codecs
 import os
 import re
 import argparse
+from sklearn.metrics import classification_report
 
 LOG_PATTERN = re.compile("id:\s(.*)\ntid:\s(.*)\nmax_column:\s(\d+)\nmax_cell_value_per_col:\s(\d+)\nt:\s(.*)\np:\s(.*)\nResult:\s(False|True)\n")
 
@@ -67,7 +68,40 @@ def process(question, table):
     })
 
 
-def save(questions, file):
+def recalc_index(question):
+    """
+    0: PAT
+    1: LIT
+    2: TABLE_NAME
+    3: COLUMN_NAME
+    4: CELL_VALUE
+    :param question:
+    :return:
+    """
+    ground_truth_index = question["g"]
+    prediction_index = question["p"]
+    max_column_num = question["max_column_num"]
+    max_cell_value_per_col = question["max_cell_value_per_col"]
+    ground_truth_new_index = list()
+    prediction_new_index = list()
+
+    for t, p in zip(ground_truth_index, prediction_index):
+        if t == 0 or t == 1 or t == 2:
+            ground_truth_new_index.append(t)
+        elif t < 3 + max_column_num:
+            ground_truth_new_index.append(3)
+        else:
+            ground_truth_new_index.append(4)
+        if p == 0 or p == 1 or p == 2:
+            prediction_new_index.append(p)
+        elif p < 3 + max_column_num:
+            prediction_new_index.append(3)
+        else:
+            prediction_new_index.append(4)
+    return ground_truth_new_index, prediction_new_index
+
+
+def save(questions, report, file):
     with codecs.open(file, "w", encoding="utf8") as f:
         string = ""
         for q in questions:
@@ -79,6 +113,8 @@ def save(questions, file):
                 else:
                     temp = str(value)
                 string += (key + ": " + temp + "\n")
+        string += "=======================\n\n"
+        string += report
         f.write(string)
 
 
@@ -91,12 +127,19 @@ def main(log_file, table_file):
     tables = read_tables(table_file)
     table_dict = build_table_dict(tables)
     questions = read_log(log_file)
+    truth = list()
+    prediction = list()
     for q in questions:
         process(q, table_dict[q["tid"]])
+        t, p = recalc_index(q)
+        truth += t
+        prediction += p
+
     file_base_name = os.path.basename(log_file)
     dirname = os.path.dirname(log_file)
     file = os.path.join(dirname, "processed_" + file_base_name)
-    save(questions, file)
+    report = classification_report(truth, prediction, target_names=["PAT", "LIT", "TAB", "COL", "CELL"])
+    save(questions, report, file)
 
 
 if __name__ == "__main__":
