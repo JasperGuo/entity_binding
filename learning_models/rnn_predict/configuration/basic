@@ -9,6 +9,7 @@ character_rnn_encoder_layer:      1
 combined_embedding_dim:           50
 question_rnn_encoder_hidden_dim:  100
 question_rnn_encoder_layer:       1
+question_encoder_output_dim:      100
 highway_transform_layer_1_dim:    100
 highway_transform_layer_2_dim:    100
 cell_value_encoder_layer_1_dim:   100

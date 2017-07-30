@@ -51,6 +51,7 @@ class Model:
         self._char_rnn_encoder_layer = opts["character_rnn_encoder_layer"]
         self._question_rnn_encoder_hidden_dim = opts["question_rnn_encoder_hidden_dim"]
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
+        self._question_encoder_output_dim = opts["question_encoder_output_dim"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
         self._scoring_weight_dim = opts["scoring_weight_dim"]
         self._cell_value_encoder_layer_1_dim = opts["cell_value_encoder_layer_1_dim"]
@@ -237,7 +238,7 @@ class Model:
             # PAT & LIT
             special_tag_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
-                    [2, self._char_embedding_dim],
+                    [2, self._table_extra_transform_dim],
                     stddev=0.5
                 ),
                 name="special_tag_embedding"
@@ -247,7 +248,7 @@ class Model:
             # GO
             go_tag_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
-                    [self._char_embedding_dim],
+                    [self._table_extra_transform_dim],
                     stddev=0.5
                 ),
                 name="go_tag_embedding"
@@ -376,7 +377,8 @@ class Model:
         :param word_embedding:
         :param combine_layer_params
         :return:
-            [batch_size, max_question_length, table_extra_transform_dim]
+            [batch_size, max_question_length, question_encoder_output_dim]
+            [batch_size, max_question_length, combined_embedding_dim]
         """
         char_embedded_question = tf.nn.embedding_lookup(
             params=character_based_word_embedding,
@@ -434,14 +436,14 @@ class Model:
             # Shape: [batch_size, max_question_length, question_rnn_encoder_hidden_dim*2]
             question_rnn_outputs = tf.concat(values=[output_fw, output_bw], axis=-1)
 
-            with tf.variable_scope("transform"):
+            with tf.variable_scope("question_transform"):
                 return tf.reshape(
                     tf.layers.dense(
                         inputs=question_rnn_outputs,
-                        units=self._table_extra_transform_dim,
-                        name="highway_transform_layer_2"
+                        units=self._question_encoder_output_dim,
+                        name="question_transform_layer"
                     ),
-                    shape=[self._batch_size, self._max_question_length, self._table_extra_transform_dim]
+                    shape=[self._batch_size, self._max_question_length, self._question_encoder_output_dim]
                 ), combined_embedded
 
     def _encode_table_name(self, character_based_word_embedding, word_embedding, combine_layer_params):
@@ -648,26 +650,12 @@ class Model:
 
             return transformed_table_name_representation, transformed_column_name_representation
 
-    def _transform_special_tag(self, special_tag_embedding):
-        """
-        Transform special tag
-        :param special_tag_embedding:
-        :return:
-            [2, table_extra_transform_dim]
-        """
-        with tf.variable_scope("transform_special_tag_embedding"):
-            return tf.layers.dense(
-                inputs=special_tag_embedding,
-                units=self._table_extra_transform_dim,
-                activation=tf.nn.relu
-            )
-
     def _flatten_table(self, table_name_representation, column_name_representation, cell_value_representation, special_tag):
         """
         Flatten table
         :param table_name_representation:   [batch_size, table_extra_transform_dim]
         :param column_name_representation:  [batch_size, max_column_num, table_extra_transform_dim]
-        :param cell_value_representation:   [batch_size, max_column_num, max_cell_value_per_col, table_extra_transform_dim]
+        :param cell_value_representation:   [batch_size, max_column_num, max_cell_value_per_col, cell_value_encoder_layer_2_dim]
         :param special_tag:                 [2, table_extra_transform_dim]
         :return:
             [batch_size, table_size, table_extra_transform_dim]
@@ -699,19 +687,21 @@ class Model:
         return table_representation
 
     def _build_predict_rnn_decoder(self):
-        with tf.variable_scope("cell"):
-            rnn_cell = tf.contrib.rnn.GRUCell(
-                num_units=self._predict_rnn_decoder_hidden_dim
-            )
-            rnn_cell = tf.contrib.rnn.DropoutWrapper(
-                cell=rnn_cell,
-                input_keep_prob=self._dropout_keep_prob,
-                output_keep_prob=self._dropout_keep_prob
-            )
-            rnn_cell = tf.contrib.rnn.MultiRNNCell(
-                [rnn_cell] * self._question_rnn_encoder_layer
-            )
-        return rnn_cell
+
+        with tf.variable_scope("predict_rnn_decoder"):
+            with tf.variable_scope("cell"):
+                rnn_cell = tf.contrib.rnn.GRUCell(
+                    num_units=self._predict_rnn_decoder_hidden_dim
+                )
+                rnn_cell = tf.contrib.rnn.DropoutWrapper(
+                    cell=rnn_cell,
+                    input_keep_prob=self._dropout_keep_prob,
+                    output_keep_prob=self._dropout_keep_prob
+                )
+                rnn_cell = tf.contrib.rnn.MultiRNNCell(
+                    [rnn_cell] * self._question_rnn_encoder_layer
+                )
+            return rnn_cell
 
     def _initialize_table_attention_layer(self):
         with tf.variable_scope("table_attention_layer"):
@@ -725,7 +715,7 @@ class Model:
             )
             b = tf.get_variable(
                 initializer=tf.zeros_initializer(),
-                shape=[self._combined_embedding_dim],
+                shape=[1, self._table_extra_transform_dim],
                 name="bias"
             )
             output_w = tf.get_variable(
@@ -806,7 +796,7 @@ class Model:
         """
         Predict tag in train phase
         :param table_representation:        [batch_size, table_size, table_extra_transform_dim]
-        :param question_representation:     [batch_size, max_question_length, table_extra_transform_dim]
+        :param question_representation:     [batch_size, max_question_length, question_encoder_output_dim]
         :param question_raw_embedding:      [batch_size, max_question_length, combined_embedding_dim]
         :param go_tag_embedding:            [table_extra_transform_dim]
         :return:
@@ -841,17 +831,17 @@ class Model:
             # Shape: [batch_size, max_question_length, table_extra_transform_dim]
             rnn_table_embedding = tf.concat([expanded_go_tab_embedding, rnn_table_embedding], axis=1)
 
-            # Shape: [batch_size, max_question_length, table_extra_transform_dim*2]
+            # Shape: [batch_size, max_question_length, question_encoder_output_dim + table_extra_transform_dim]
             decoder_input = tf.concat([question_representation, rnn_table_embedding], axis=-1)
 
-            with tf.variable_scope("decode_tag"):
-                # Shape: [batch_size, max_question_length, predict_rnn_decoder_hidden_dim]
-                decoder_outputs, decoder_states = tf.nn.dynamic_rnn(
-                    cell=decoder_cell,
-                    inputs=decoder_input,
-                    sequence_length=self._questions_length,
-                    dtype=tf.float32
-                )
+            # with tf.variable_scope("decode_tag"):
+            # Shape: [batch_size, max_question_length, predict_rnn_decoder_hidden_dim]
+            decoder_outputs, decoder_states = tf.nn.dynamic_rnn(
+                cell=decoder_cell,
+                inputs=decoder_input,
+                sequence_length=self._questions_length,
+                dtype=tf.float32
+            )
             table_attention_weights = self._initialize_table_attention_layer()
             scores = self._calc_table_attention(
                 table_representation=table_representation,
@@ -931,11 +921,11 @@ class Model:
                     :param _prediction_array:       TensorArray
                     :return:
                     """
-                    # Shape: [batch_size, 1, table_extra_transform_dim]
+                    # Shape: [batch_size, 1, question_rnn_encoder_layer]
                     _question_input = tf.slice(
                         question_representation,
                         begin=[0, _curr_ts, 0],
-                        size=[self._batch_size, 1, self._table_extra_transform_dim]
+                        size=[self._batch_size, 1, self._question_encoder_output_dim]
                     )
                     # Shape: [batch_size, 1, combined_embedding_dim]
                     _question_raw_embedding = tf.slice(
@@ -943,9 +933,9 @@ class Model:
                         begin=[0, _curr_ts, 0],
                         size=[self._batch_size, 1, self._combined_embedding_dim]
                     )
-                    # Shape: [batch_size, 1, table_extra_transform_dim*2]
+                    # Shape: [batch_size, 1, table_extra_transform_dim+question_encoder_output_dim]
                     _decoder_input = tf.concat(
-                        values=[_question_input, _tag_input],
+                        values=[_question_input, tf.reshape(_tag_input, shape=[self._batch_size, 1, self._table_extra_transform_dim])],
                         axis=-1
                     )
                     # _outputs: [batch_size, 1, predict_rnn_decoder_hidden_dim]
@@ -968,7 +958,7 @@ class Model:
                                     tf.matmul(
                                         tf.reshape(
                                             tf.concat(values=[_question_raw_embedding, _outputs], axis=-1),
-                                            shape=[-1, self._combined_embedding_dim+self._question_rnn_encoder_hidden_dim]
+                                            shape=[-1, self._combined_embedding_dim+self._predict_rnn_decoder_hidden_dim]
                                         ),
                                         table_attention_weights["W"]
                                     ),
@@ -1008,21 +998,23 @@ class Model:
                     # Shape: [batch_size]
                     _prediction = tf.cast(tf.argmax(_scores, axis=-1), dtype=tf.int32)
 
-                    # Shape: [batch_size]
-                    _predicted_tag_score = tf.gather(_scores, _prediction)
-
-                    _score_array = _prediction_score_array.write(_curr_ts, _predicted_tag_score)
-
                     _array = _prediction_array.write(_curr_ts, _prediction)
 
                     # Shape: [batch_size, 2]
-                    _next_tag_index = tf.stack(
+                    _next_tag_index = tf.concat(
                         [
                             tf.reshape(tf.range(self._batch_size), [self._batch_size, 1]),
-                            tf.reshape(_prediction, [self._batch_size, 1])
+                            tf.cast(tf.reshape(_prediction, [self._batch_size, 1]), dtype=tf.int32)
                         ],
                         axis=1
                     )
+
+                    _predicted_tag_score = tf.reshape(
+                        tf.gather_nd(params=_scores, indices=_next_tag_index),
+                        shape=[self._batch_size]
+                    )
+
+                    _score_array = _prediction_score_array.write(_curr_ts, _predicted_tag_score)
 
                     # Shape: [batch_size, table_extra_transform_dim]
                     _next_tag_inputs = tf.gather_nd(params=table_representation, indices=_next_tag_index)
@@ -1034,7 +1026,7 @@ class Model:
                     cond=__cond,
                     loop_vars=[
                         tf.constant(0, dtype=tf.int32),
-                        decoder_cell.zero_state(self._batch_size),
+                        decoder_cell.zero_state(self._batch_size, dtype=tf.float32),
                         expanded_go_tab_embedding,
                         tf.TensorArray(dtype=tf.float32, size=self._max_question_length),
                         tf.TensorArray(dtype=tf.int32, size=self._max_question_length)
@@ -1068,7 +1060,7 @@ class Model:
 
         combine_embedding_layer_params = self._initialize_combine_embedding_layer()
 
-        # Shape: [batch_size, max_question_length, table_transform_embedding]
+        # Shape: [batch_size, max_question_length, question_encoder_output_dim]
         # Shape: [batch_size, max_question_length, combined_embedding_dim]
         question_representation, question_raw_embedding = self._encode_question(
             character_based_word_embedding=character_based_word_embedding,
@@ -1106,10 +1098,10 @@ class Model:
             column_name_representation=column_name_representation
         )
 
-        # Shape: [2, table_extra_dim]
-        embedded_special_tag = self._transform_special_tag(special_tag_embedding)
+        # Shape: [2, table_extra_transform_dim]
+        embedded_special_tag = special_tag_embedding
 
-        # Shape: [batch_size, table_size, table_extra_dim]
+        # Shape: [batch_size, table_size, table_extra_transform_dim]
         table_representation = self._flatten_table(
             table_name_representation=table_name_representation,
             column_name_representation=column_name_representation,
