@@ -29,9 +29,6 @@ def softmax_with_mask(tensor, mask):
 
 
 class Model:
-
-    epsilon = 1e-3
-
     def __init__(
             self,
             opts,
@@ -55,8 +52,7 @@ class Model:
         self._question_rnn_encoder_hidden_dim = opts["question_rnn_encoder_hidden_dim"]
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
-        self._exact_match_embedding_dim = opts["exact_match_embedding_dim"]
-        self._scoring_weight_dim = opts["scoring_weight_dim"]
+        self._transition_score_weight_dim = opts["transition_score_weight_dim"]
 
         self._highway_transform_layer_1_dim = opts["highway_transform_layer_1_dim"]
         self._highway_transform_layer_2_dim = opts["highway_transform_layer_2_dim"]
@@ -188,7 +184,7 @@ class Model:
             # Exact match matrix
             # None: size of table
             self._exact_match_matrix = tf.placeholder(
-                tf.int32,
+                tf.float32,
                 [self._batch_size, self._max_question_length, None],
                 name="exact_match_matrix"
             )
@@ -258,16 +254,17 @@ class Model:
                 name="column_data_type_embedding"
             )
 
-        with tf.variable_scope("exact_match_embedding_layer"):
-            exact_match_embedding_layer = tf.get_variable(
+        with tf.variable_scope("special_transition_tag_embedding_layer"):
+            # Begin & End
+            special_transition_tag_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
-                    [2, self._exact_match_embedding_dim],
+                    [2, self._table_extra_transform_dim],
                     stddev=0.5
                 ),
-                name="exact_match_embedding_dim"
+                name="special_transition_tag_embedding"
             )
 
-        return word_embedding, char_embedding, column_data_type_embedding, special_tag_embedding, exact_match_embedding_layer
+        return word_embedding, char_embedding, column_data_type_embedding, special_tag_embedding, special_transition_tag_embedding
 
     def _encode_word(self, embedded_character, word_length):
         """
@@ -712,82 +709,125 @@ class Model:
         )
         return table_representation
 
-    def _calc_attention(self, table_representation, question_representation, exact_match_feature):
+    def _calc_transition_score(self, table_representation, special_transition_tag_embedding):
         """
-        :param table_representation:    [batch_size, table_size, table_extra_transform_dim]
-        :param question_representation: [batch_size, max_question_length, highway_transform_layer_2_dim]
-        :param exact_match_feature:     [batch_size, max_question_length, table_size, exact_match_embedding_dim]
+        :param table_representation: [batch_size, table_size, table_extra_transform_dim]
+        :param special_transition_tag_embedding: [2, table_extra_transform_dim]
         :return:
-            [batch_size, max_question_length, table_size]
+            [batch_size, table_size+2, table_size+2]
         """
-        # Shape: [batch_size*max_question_length*table_size, table_extra_transform_dim]
-        expanded_table_representation = tf.reshape(
-            tf.tile(
-                table_representation,
-                multiples=[1, self._max_question_length, 1]
-            ),
-            shape=[-1, self._table_extra_transform_dim]
-        )
-        # Shape: [batch_size*max_question_length*table_size, highway_transform_layer_2_dim]
-        expanded_question_representation = tf.reshape(
-            tf.tile(
-                tf.expand_dims(
-                    question_representation,
-                    axis=2
-                ),
-                multiples=[1, 1, self._table_size, 1]
-            ),
-            shape=[self._batch_size*self._max_question_length*self._table_size, self._highway_transform_layer_2_dim]
-        )
-
-        with tf.name_scope("attention_scoring"):
-
-            with tf.variable_scope("attention_scoring_weights"):
-                w_t = tf.get_variable(
+        with tf.name_scope("calc_transition_score"):
+            # Shape: [batch_size, table_size + 2, table_size + 2]
+            new_table_representation = tf.concat(
+                values=[
+                    table_representation,
+                    tf.tile(tf.expand_dims(special_transition_tag_embedding, axis=0), multiples=[self._batch_size, 1, 1])
+                ],
+                axis=2
+            )
+            with tf.get_variable("transition_score_weights"):
+                w_t_1 = tf.get_variable(
                     initializer=tf.contrib.layers.xavier_initializer(),
-                    shape=[self._table_extra_transform_dim, self._scoring_weight_dim],
-                    name="table_weight"
+                    shape=[self._table_extra_transform_dim, self._transition_score_weight_dim],
+                    dtype=tf.float32,
+                    name="w_t_1"
                 )
-                w_q = tf.get_variable(
+                w_t_2 = tf.get_variable(
                     initializer=tf.contrib.layers.xavier_initializer(),
-                    shape=[self._highway_transform_layer_2_dim, self._scoring_weight_dim],
-                    name="question_weight"
-                )
-                w_e = tf.get_variable(
-                    initializer=tf.contrib.layers.xavier_initializer(),
-                    shape=[self._exact_match_embedding_dim, self._scoring_weight_dim],
-                    name="exact_match_feature_weight"
+                    shape=[self._table_extra_transform_dim, self._transition_score_weight_dim],
+                    dtype=tf.float32,
+                    name="w_t_2"
                 )
                 bias = tf.get_variable(
                     initializer=tf.zeros_initializer(),
-                    shape=[1, self._scoring_weight_dim],
+                    shape=[1, self._transition_score_weight_dim],
+                    dtype=tf.float32,
                     name="bias"
                 )
                 v = tf.get_variable(
                     initializer=tf.contrib.layers.xavier_initializer(),
-                    shape=[self._scoring_weight_dim, 1],
+                    shape=[self._transition_score_weight_dim, 1],
+                    dtype=tf.float32,
                     name="v"
                 )
+            # Shape: [batch_size*table_size*table_siz, transition_score_weight_dim]
+            table_1 = tf.reshape(
+                tf.tile(
+                    tf.reshape(
+                        tf.matmul(
+                            a=tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
+                            b=w_t_1
+                        ),
+                        shape=[self._batch_size, self._table_size+2, self._transition_score_weight_dim]
+                    ),
+                    multiples=[1, self._table_size+2, 1]
+                ),
+                shape=[-1, self._transition_score_weight_dim]
+            )
+            # Shape: [batch_size*table_size*table_siz, transition_score_weight_dim]
+            table_2 = tf.reshape(
+                tf.tile(
+                    tf.expand_dims(
+                        tf.reshape(
+                            tf.matmul(
+                                a=tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
+                                b=w_t_2
+                            ),
+                            shape=[self._batch_size, self._table_size+2, self._transition_score_weight_dim]
+                        ),
+                        axis=2
+                    ),
+                    multiples=[1, 1, self._table_size+2, 1]
+                ),
+                shape=[-1, self._transition_score_weight_dim]
+            )
 
             return tf.reshape(
                 tf.matmul(
-                    tf.nn.relu(
+                    a=tf.nn.relu(
                         tf.add(
-                            tf.matmul(
-                                a=tf.concat(
-                                    values=[
-                                        expanded_question_representation,
-                                        expanded_table_representation,
-                                        tf.reshape(exact_match_feature, shape=[-1, self._exact_match_embedding_dim])
-                                    ],
-                                    axis=-1
-                                ),
-                                b=tf.concat(values=[w_q, w_t, w_e], axis=0)
-                            ),
+                            tf.add(table_2, table_1),
                             bias
-                        ),
+                        )
                     ),
-                    v
+                    b=v
+                ),
+                shape=[self._batch_size, self._table_size+2, self._table_size+2]
+            )
+
+    def _calc_attention(self, table_representation, question_representation):
+        """
+        :param table_representation:    [batch_size, table_size, table_extra_transform_dim]
+        :param question_representation: [batch_size, max_question_length, highway_transform_layer_2_dim]
+        :return:
+        """
+        # Shape: [batch_size, max_question_length*self.table_size, table_extra_transform_dim]
+        expanded_table_representation = tf.tile(
+            table_representation,
+            multiples=[1, self._max_question_length, 1]
+        )
+        # Shape: [batch_size, max_question_length*self.table_size, highway_transform_layer_2_dim]
+        temp = tf.tile(
+            tf.expand_dims(
+                question_representation,
+                axis=2
+            ),
+            multiples=[1, 1, self._table_size, 1]
+        )
+        expanded_question_representation = tf.reshape(
+            temp,
+            shape=[self._batch_size, self._max_question_length*self._table_size, self._highway_transform_layer_2_dim]
+        )
+
+        with tf.name_scope("attention_scoring"):
+            # Shape: [batch_size, question_length*table_size]
+            return tf.reshape(
+                tf.reduce_sum(
+                    tf.multiply(
+                        expanded_question_representation,
+                        expanded_table_representation
+                    ),
+                    axis=-1
                 ),
                 shape=[self._batch_size, self._max_question_length, self._table_size]
             )
@@ -800,10 +840,7 @@ class Model:
         """
         with tf.variable_scope("scoring"):
             scores = attention_scores
-            tf.check_numerics(scores, message="Score Nan...")
-            softmax_scores = tf.nn.softmax(scores, dim=-1)
-            tf.check_numerics(softmax_scores, message="Softmax Score Nan...")
-            return softmax_scores
+            return tf.nn.softmax(scores, dim=-1)
 
     def _calc_ground_truth_index(self):
         """
@@ -828,10 +865,119 @@ class Model:
             )
             return tf.stack([prefix_1, prefix_2, self._ground_truth], axis=-1)
 
+    def _calc_ground_truth_transition_table_index(self):
+        """
+        Calculate Ground truth transition table index
+        :return:
+            [batch_size, max_question_length+1, 3]
+        """
+        with tf.name_scope("calc_ground_truth_transition_table_index"):
+            start_index = tf.constant([self._table_size], dtype=tf.int32)
+            end_index = tf.constant([self._table_size + 1], dtype=tf.int32)
+
+            temp_idx = tf.concat(
+                values=[
+                    tf.tile(tf.expand_dims(start_index, axis=0), multiples=[self._batch_size, 1]),
+                    tf.slice(
+                        self._ground_truth,
+                        begin=[0, 1],
+                        size=[self._batch_size, self._max_question_length-1]
+                    )
+                ],
+                axis=1
+            )
+
+            index = tf.concat(
+                values=[
+                    tf.reshape(temp_idx, shape=[self._batch_size, self._max_question_length, 1]),
+                    tf.reshape(self._ground_truth, shape=[self._batch_size, self._max_question_length, 1])
+                ],
+                axis=-1
+            )
+
+            last_index = tf.reshape(
+                tf.concat(
+                    values=[
+                        tf.slice(self._ground_truth, begin=[0, self._max_question_length-1], size=[self._batch_size, 1]),
+                        tf.tile(tf.expand_dims(end_index, axis=0), multiples=[self._batch_size, 1]),
+                    ],
+                    axis=1
+                ),
+                shape=[self._batch_size, 1, 2]
+            )
+
+            # Shape: [batch_size, max_question_length+1, 2]
+            index = tf.concat(values=[index, last_index], axis=1)
+
+            template = tf.reshape(
+                tf.tile(
+                    tf.expand_dims(
+                        tf.range(self._batch_size, dtype=tf.int32),
+                        axis=1
+                    ),
+                    multiples=[1, self._max_question_length + 1]
+                ),
+                shape=[self._batch_size, self._max_question_length + 1, 1]
+            )
+
+            return tf.concat([template, index], axis=-1)
+
+    def _forward(self, tag_scores, transition_scores):
+        """
+        :param tag_scores:          [batch_size, max_question_length, table_size]
+        :param transition_scores:   [batch_size, table_size+2, table_size + 2]
+        Forward algorithm to calculate Z(x)
+        :return:
+        """
+        with tf.name_scope("crf_forward"):
+
+            start_index = self._table_size
+            initial_score = tf.reshape(
+                tf.slice(
+                    transition_scores,
+                    begin=[0, self._table_size - 1, 0],
+                    size=[self._batch_size, 1, self._table_size + 2]
+                ),
+                shape=[self._batch_size, self._table_size + 2]
+            )
+
+            def __cond(_curr_ts, _scores):
+                return tf.less(_curr_ts, self._max_question_length)
+
+            def __loop_body(_curr_ts, _scores):
+                """
+                :param _curr_ts:    Scalar
+                :param _scores:     [batch_size, table_size + 2]
+                :return:
+                """
+                # Shape: [batch_size, table_size + 2]
+                curr_tag_scores = tf.reshape(
+                    tf.slice(
+                        tag_scores,
+                        begin=[0, _curr_ts, 0],
+                        size=[self._batch_size, 1, self._table_size + 2]
+                    ),
+                    shape=[self._batch_size, self._table_size + 2]
+                )
+
+                # Shape: [batch_size, table_size + 2, table_size + 2]
+                expanded_scores = tf.tile(tf.expand_dims(_scores, axis=1), multiples=[1, self._table_size + 2, 1])
+
+                return
+
+            tf.while_loop(
+                cond=__cond,
+                body=__loop_body,
+                loop_vars=[
+                    tf.constant(0, dtype=tf.int32),
+                    initial_score
+                ]
+            )
+
     def _build_graph(self):
         self._build_input_nodes()
         self._set_dynamic_value()
-        word_embedding, character_embedding, data_type_embedding, special_tag_embedding, exact_match_embedding = self._build_embedding()
+        word_embedding, character_embedding, data_type_embedding, special_tag_embedding, special_transition_tag_embedding = self._build_embedding()
 
         embedded_character = tf.nn.embedding_lookup(
             params=character_embedding,
@@ -841,12 +987,6 @@ class Model:
         character_based_word_embedding = self._encode_word(
             embedded_character=embedded_character,
             word_length=self._word_character_length
-        )
-
-        # Shape: [batch_size, max_question_length, table_size, exact_match_embedding_dim]
-        embedded_exact_match_feature = tf.nn.embedding_lookup(
-            params=exact_match_embedding,
-            ids=self._exact_match_matrix
         )
 
         combine_embedding_layer_params = self._initialize_combine_embedding_layer()
@@ -902,9 +1042,35 @@ class Model:
         # Shape: [batch_size, max_question_length, table_size]
         self._neural_scores = self._calc_attention(
             table_representation=table_representation,
-            question_representation=question_representation,
-            exact_match_feature=embedded_exact_match_feature
+            question_representation=question_representation
         )
+
+        # Shape: [batch_size, table_size+2, table_size+2]
+        self._transition_score = self._calc_transition_score(
+            table_representation=table_representation,
+            special_transition_tag_embedding=special_transition_tag_embedding
+        )
+
+        if self._is_test:
+            return
+
+        # Shape: [batch_size, max_question_length, 3]
+        ground_truth_tag_score_index = self._calc_ground_truth_index()
+        # Shape: [batch_size, max_question_length+1, 3]
+        ground_truth_transition_score_index = self._calc_ground_truth_transition_table_index()
+
+        ground_truth_tag_score = tf.reshape(
+            tf.gather_nd(params=self._neural_scores, indices=tf.reshape(ground_truth_tag_score_index, [-1, 3])),
+            shape=[self._batch_size, self._max_question_length]
+        )
+
+        ground_truth_transition_score = tf.reshape(
+            tf.gather_nd(params=self._transition_score, indices=tf.reshape(ground_truth_transition_score_index, [-1, 3])),
+            shape=[self._batch_size, self._max_question_length+1]
+        )
+
+        # Shape: [batch_size]
+        ground_truth_index = tf.reduce_sum(ground_truth_tag_score, axis=1) + tf.reduce_sum(ground_truth_transition_score, axis=1)
 
         # Shape: [batch_size, max_question_length, table_size]
         self._scores = self._calc_scores(self._neural_scores)
