@@ -258,7 +258,7 @@ class Model:
             # Begin & End
             special_transition_tag_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
-                    [2, self._table_extra_transform_dim],
+                    [1, self._table_extra_transform_dim],
                     stddev=0.5
                 ),
                 name="special_transition_tag_embedding"
@@ -712,18 +712,18 @@ class Model:
     def _calc_transition_score(self, table_representation, special_transition_tag_embedding):
         """
         :param table_representation: [batch_size, table_size, table_extra_transform_dim]
-        :param special_transition_tag_embedding: [2, table_extra_transform_dim]
+        :param special_transition_tag_embedding: [1, table_extra_transform_dim]
         :return:
-            [batch_size, table_size+2, table_size+2]
+            [batch_size, table_size+1, table_size+1]
         """
         with tf.name_scope("calc_transition_score"):
-            # Shape: [batch_size, table_size + 2, table_size + 2]
+            # Shape: [batch_size, table_size + 1, table_extra_transform_dim]
             new_table_representation = tf.concat(
                 values=[
                     table_representation,
                     tf.tile(tf.expand_dims(special_transition_tag_embedding, axis=0), multiples=[self._batch_size, 1, 1])
                 ],
-                axis=2
+                axis=1
             )
             with tf.get_variable("transition_score_weights"):
                 w_t_1 = tf.get_variable(
@@ -750,7 +750,7 @@ class Model:
                     dtype=tf.float32,
                     name="v"
                 )
-            # Shape: [batch_size*table_size*table_siz, transition_score_weight_dim]
+            # Shape: [batch_size*(table_size+1)*(table_size+1), transition_score_weight_dim]
             table_1 = tf.reshape(
                 tf.tile(
                     tf.reshape(
@@ -758,13 +758,13 @@ class Model:
                             a=tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
                             b=w_t_1
                         ),
-                        shape=[self._batch_size, self._table_size+2, self._transition_score_weight_dim]
+                        shape=[self._batch_size, self._table_size+1, self._transition_score_weight_dim]
                     ),
-                    multiples=[1, self._table_size+2, 1]
+                    multiples=[1, self._table_size+1, 1]
                 ),
                 shape=[-1, self._transition_score_weight_dim]
             )
-            # Shape: [batch_size*table_size*table_siz, transition_score_weight_dim]
+            # Shape: [batch_size*(table_size+1)*(table_size+1), transition_score_weight_dim]
             table_2 = tf.reshape(
                 tf.tile(
                     tf.expand_dims(
@@ -773,11 +773,11 @@ class Model:
                                 a=tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
                                 b=w_t_2
                             ),
-                            shape=[self._batch_size, self._table_size+2, self._transition_score_weight_dim]
+                            shape=[self._batch_size, self._table_size+1, self._transition_score_weight_dim]
                         ),
                         axis=2
                     ),
-                    multiples=[1, 1, self._table_size+2, 1]
+                    multiples=[1, 1, self._table_size+1, 1]
                 ),
                 shape=[-1, self._transition_score_weight_dim]
             )
@@ -792,7 +792,7 @@ class Model:
                     ),
                     b=v
                 ),
-                shape=[self._batch_size, self._table_size+2, self._table_size+2]
+                shape=[self._batch_size, self._table_size+1, self._table_size+1]
             )
 
     def _calc_attention(self, table_representation, question_representation):
@@ -869,13 +869,22 @@ class Model:
         """
         Calculate Ground truth transition table index
         :return:
-            [batch_size, max_question_length+1, 3]
+            [batch_size, max_question_length, 3]
         """
         with tf.name_scope("calc_ground_truth_transition_table_index"):
-            start_index = tf.constant([self._table_size], dtype=tf.int32)
-            end_index = tf.constant([self._table_size + 1], dtype=tf.int32)
+            template = tf.reshape(
+                tf.tile(
+                    tf.expand_dims(
+                        tf.range(self._batch_size, dtype=tf.int32),
+                        axis=1
+                    ),
+                    multiples=[1, self._max_question_length]
+                ),
+                shape=[self._batch_size, self._max_question_length, 1]
+            )
 
-            temp_idx = tf.concat(
+            start_index = tf.constant([self._table_size], dtype=tf.int32)
+            index = tf.concat(
                 values=[
                     tf.tile(tf.expand_dims(start_index, axis=0), multiples=[self._batch_size, 1]),
                     tf.slice(
@@ -887,47 +896,22 @@ class Model:
                 axis=1
             )
 
-            index = tf.concat(
-                values=[
-                    tf.reshape(temp_idx, shape=[self._batch_size, self._max_question_length, 1]),
-                    tf.reshape(self._ground_truth, shape=[self._batch_size, self._max_question_length, 1])
+            return tf.concat(
+                [
+                    template,
+                    tf.reshape(index, shape=[self._batch_size, self._max_question_length, 1]),
+                    tf.reshape(self._gradient_clip, shape=[self._batch_size, self._max_question_length, 1])
                 ],
                 axis=-1
             )
 
-            last_index = tf.reshape(
-                tf.concat(
-                    values=[
-                        tf.slice(self._ground_truth, begin=[0, self._max_question_length-1], size=[self._batch_size, 1]),
-                        tf.tile(tf.expand_dims(end_index, axis=0), multiples=[self._batch_size, 1]),
-                    ],
-                    axis=1
-                ),
-                shape=[self._batch_size, 1, 2]
-            )
-
-            # Shape: [batch_size, max_question_length+1, 2]
-            index = tf.concat(values=[index, last_index], axis=1)
-
-            template = tf.reshape(
-                tf.tile(
-                    tf.expand_dims(
-                        tf.range(self._batch_size, dtype=tf.int32),
-                        axis=1
-                    ),
-                    multiples=[1, self._max_question_length + 1]
-                ),
-                shape=[self._batch_size, self._max_question_length + 1, 1]
-            )
-
-            return tf.concat([template, index], axis=-1)
-
     def _forward(self, tag_scores, transition_scores):
         """
         :param tag_scores:          [batch_size, max_question_length, table_size]
-        :param transition_scores:   [batch_size, table_size+2, table_size + 2]
+        :param transition_scores:   [batch_size, table_size+1, table_size + 1]
         Forward algorithm to calculate Z(x)
         :return:
+            [batch_size]
         """
         with tf.name_scope("crf_forward"):
 
@@ -935,10 +919,10 @@ class Model:
             initial_score = tf.reshape(
                 tf.slice(
                     transition_scores,
-                    begin=[0, self._table_size - 1, 0],
-                    size=[self._batch_size, 1, self._table_size + 2]
+                    begin=[0, start_index, 0],
+                    size=[self._batch_size, 1, self._table_size + 1]
                 ),
-                shape=[self._batch_size, self._table_size + 2]
+                shape=[self._batch_size, self._table_size + 1]
             )
 
             def __cond(_curr_ts, _scores):
@@ -947,32 +931,58 @@ class Model:
             def __loop_body(_curr_ts, _scores):
                 """
                 :param _curr_ts:    Scalar
-                :param _scores:     [batch_size, table_size + 2]
+                :param _scores:     [batch_size, table_size + 1]
                 :return:
                 """
-                # Shape: [batch_size, table_size + 2]
+                # Shape: [batch_size, table_size + 1]
                 curr_tag_scores = tf.reshape(
                     tf.slice(
                         tag_scores,
                         begin=[0, _curr_ts, 0],
-                        size=[self._batch_size, 1, self._table_size + 2]
+                        size=[self._batch_size, 1, self._table_size + 1]
                     ),
-                    shape=[self._batch_size, self._table_size + 2]
+                    shape=[self._batch_size, self._table_size + 1]
                 )
 
-                # Shape: [batch_size, table_size + 2, table_size + 2]
-                expanded_scores = tf.tile(tf.expand_dims(_scores, axis=1), multiples=[1, self._table_size + 2, 1])
+                __scores = tf.add(
+                    tf.reduce_sum(
+                        tf.add(
+                            tf.expand_dims(_scores, axis=1),
+                            tf.transpose(transition_scores, perm=[0, 2, 1])
+                        ),
+                        axis=-1
+                    ),
+                    curr_tag_scores
+                )
 
-                return
+                next_ts = tf.add(_curr_ts, 1)
 
-            tf.while_loop(
+                return next_ts, __scores
+
+            ts, scores = tf.while_loop(
                 cond=__cond,
                 body=__loop_body,
                 loop_vars=[
-                    tf.constant(0, dtype=tf.int32),
+                    tf.constant(1, dtype=tf.int32),
                     initial_score
                 ]
             )
+
+            return tf.log(
+                tf.reduce_sum(
+                    tf.exp(scores),
+                    axis=-1
+                )
+            )
+
+    def _viterbi(self, tag_scores, transition_scores):
+        """
+        Viterbi Algorithm to predict sequence
+        :param tag_scores:          [batch_size, max_question_length, table_size]
+        :param transition_scores:   [batch_size, table_size + 1, table_size + 1]
+        :return:
+        """
+        pass
 
     def _build_graph(self):
         self._build_input_nodes()
@@ -1045,18 +1055,22 @@ class Model:
             question_representation=question_representation
         )
 
-        # Shape: [batch_size, table_size+2, table_size+2]
+        self._scores = self._neural_scores
+
+        # Shape: [batch_size, table_size+1, table_size+1]
         self._transition_score = self._calc_transition_score(
             table_representation=table_representation,
             special_transition_tag_embedding=special_transition_tag_embedding
         )
+
+        self._predictions = None
 
         if self._is_test:
             return
 
         # Shape: [batch_size, max_question_length, 3]
         ground_truth_tag_score_index = self._calc_ground_truth_index()
-        # Shape: [batch_size, max_question_length+1, 3]
+        # Shape: [batch_size, max_question_length, 3]
         ground_truth_transition_score_index = self._calc_ground_truth_transition_table_index()
 
         ground_truth_tag_score = tf.reshape(
@@ -1066,43 +1080,19 @@ class Model:
 
         ground_truth_transition_score = tf.reshape(
             tf.gather_nd(params=self._transition_score, indices=tf.reshape(ground_truth_transition_score_index, [-1, 3])),
-            shape=[self._batch_size, self._max_question_length+1]
+            shape=[self._batch_size, self._max_question_length]
         )
 
         # Shape: [batch_size]
-        ground_truth_index = tf.reduce_sum(ground_truth_tag_score, axis=1) + tf.reduce_sum(ground_truth_transition_score, axis=1)
+        ground_truth_scores = tf.reduce_sum(ground_truth_tag_score, axis=1) + tf.reduce_sum(ground_truth_transition_score, axis=1)
 
-        # Shape: [batch_size, max_question_length, table_size]
-        self._scores = self._calc_scores(self._neural_scores)
-
-        # Predictions
-        # Shape: [batch_size, max_question_length]
-        self._predictions = tf.argmax(input=self._scores, axis=-1)
-
-        if self._is_test:
-            return
-
-        # Loss
-        # Calc Ground truth index
-        # Shape: [batch_size, max_question_length, 3]
-        ground_truth_index = self._calc_ground_truth_index()
-        # Shape: [batch_size, max_question_length]
-        probs = tf.reshape(
-            tf.gather_nd(
-                params=self._scores,
-                indices=tf.reshape(
-                    ground_truth_index,
-                    shape=[-1, 3]
-                )
-            ),
-            shape=[self._batch_size, self._max_question_length]
+        # Shape: [batch_size]
+        total_scores = self._forward(
+            tag_scores=self._neural_scores,
+            transition_scores=self._transition_score
         )
-        log_probs = tf.log(probs)
-        self._loss = tf.negative(
-            tf.reduce_mean(
-                tf.reduce_sum(log_probs, axis=1)
-            )
-        )
+
+        self._loss = tf.reduce_mean(ground_truth_scores - total_scores)
 
         with tf.name_scope("back_propagation"):
             optimizer = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
