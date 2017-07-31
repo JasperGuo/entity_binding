@@ -40,20 +40,19 @@ class Model:
     ):
         self._is_test = is_test
 
-        self._word_embedding_dim = opts["word_embedding_dim"]
-        self._char_embedding_dim = opts["char_embedding_dim"]
-        self._data_type_embedding_dim = opts["data_type_embedding_dim"]
         self._gradient_clip = opts["gradient_clip"]
         self._dropout = opts["dropout"]
         self._max_question_length = opts["max_question_length"]
         self._max_word_length = opts["max_word_length"]
+        self._word_embedding_dim = opts["word_embedding_dim"]
+        self._char_embedding_dim = opts["char_embedding_dim"]
+        self._data_type_embedding_dim = opts["data_type_embedding_dim"]
         self._char_rnn_encoder_hidden_dim = opts["character_rnn_encoder_hidden_dim"]
         self._char_rnn_encoder_layer = opts["character_rnn_encoder_layer"]
         self._question_rnn_encoder_hidden_dim = opts["question_rnn_encoder_hidden_dim"]
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
         self._question_encoder_output_dim = opts["question_encoder_output_dim"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
-        self._scoring_weight_dim = opts["scoring_weight_dim"]
         self._cell_value_encoder_layer_1_dim = opts["cell_value_encoder_layer_1_dim"]
         self._cell_value_encoder_layer_2_dim = opts["cell_value_encoder_layer_2_dim"]
         self._predict_rnn_decoder_hidden_dim = opts["predict_rnn_decoder_hidden_dim"]
@@ -333,7 +332,7 @@ class Model:
             W = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[
-                    self._word_embedding_dim + self._char_embedding_dim,
+                    self._word_embedding_dim + self._char_rnn_encoder_hidden_dim * 2,
                     self._combined_embedding_dim
                 ],
                 name="weight"
@@ -357,14 +356,10 @@ class Model:
         :return:
         """
         with tf.name_scope("combine_word_and_character_embedding"):
-            dropout_layer = tf.nn.dropout(
-                x=tf.concat(values=[word_embedded, character_embedded], axis=-1),
-                keep_prob=self._dropout_keep_prob
-            )
             return tf.nn.relu(
                 tf.add(
                     tf.matmul(
-                        a=dropout_layer,
+                        a=tf.concat(values=[word_embedded, character_embedded], axis=-1),
                         b=params["W"]
                     ),
                     params["b"]
@@ -393,7 +388,7 @@ class Model:
             self._combine_embedding(
                 params=combine_layer_params,
                 word_embedded=tf.reshape(word_embedded_question, shape=[-1, self._word_embedding_dim]),
-                character_embedded=tf.reshape(char_embedded_question, shape=[-1, self._char_embedding_dim])
+                character_embedded=tf.reshape(char_embedded_question, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
             ),
             shape=[self._batch_size, self._max_question_length, self._combined_embedding_dim]
         )
@@ -469,7 +464,7 @@ class Model:
                 self._combine_embedding(
                     params=combine_layer_params,
                     word_embedded=tf.reshape(word_embedded, shape=[-1, self._word_embedding_dim]),
-                    character_embedded=tf.reshape(char_embedded, shape=[-1, self._word_embedding_dim])
+                    character_embedded=tf.reshape(char_embedded, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
                 ),
                 shape=[self._batch_size, self._max_table_name_length, self._combined_embedding_dim]
             ),
@@ -494,7 +489,7 @@ class Model:
             params=word_embedding,
             ids=self._column_name_word_ids
         )
-        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_embedding_dim])
+        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
         flatten_word_embedded = tf.reshape(word_embedded, shape=[-1, self._word_embedding_dim])
 
         # Shape: [batch_size, max_column_num, combined_embedding_dim]
@@ -502,8 +497,8 @@ class Model:
             tf.reshape(
                 self._combine_embedding(
                     params=combine_layer_params,
-                    word_embedded=flatten_char_embedded,
-                    character_embedded=flatten_word_embedded
+                    word_embedded=flatten_word_embedded,
+                    character_embedded=flatten_char_embedded
                 ),
                 shape=[self._batch_size, self._max_column_num, self._max_column_name_length,
                        self._combined_embedding_dim]
@@ -540,7 +535,7 @@ class Model:
             params=word_embedding,
             ids=self._cell_value_word_ids
         )
-        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_embedding_dim])
+        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
         flatten_word_embedded = tf.reshape(word_embedded, shape=[-1, self._word_embedding_dim])
 
         # Shape: [batch_size, max_column_num, max_cell_value_num_per_col, combined_embedding_dim]
@@ -548,8 +543,8 @@ class Model:
             tf.reshape(
                 self._combine_embedding(
                     params=combine_layer_params,
-                    word_embedded=flatten_char_embedded,
-                    character_embedded=flatten_word_embedded
+                    word_embedded=flatten_word_embedded,
+                    character_embedded=flatten_char_embedded
                 ),
                 shape=[
                     self._batch_size,
@@ -586,12 +581,8 @@ class Model:
                 ),
                 shape=[-1, self._data_type_embedding_dim + self._combined_embedding_dim + self._combined_embedding_dim]
             )
-            dropout_layer = tf.nn.dropout(
-                x=rich_embedding,
-                keep_prob=self._dropout_keep_prob
-            )
             layer_1 = tf.layers.dense(
-                inputs=dropout_layer,
+                inputs=rich_embedding,
                 units=self._cell_value_encoder_layer_1_dim,
                 activation=tf.nn.relu,
                 name="encode_cell_value_layer_1"

@@ -52,7 +52,6 @@ class Model:
         self._question_rnn_encoder_hidden_dim = opts["question_rnn_encoder_hidden_dim"]
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
-        self._scoring_weight_dim = opts["scoring_weight_dim"]
 
         self._highway_transform_layer_1_dim = opts["highway_transform_layer_1_dim"]
         self._highway_transform_layer_2_dim = opts["highway_transform_layer_2_dim"]
@@ -71,7 +70,6 @@ class Model:
             self._batch_size = opts["test_batch_size"]
         else:
             self._batch_size = opts["batch_size"]
-
 
         self._build_graph()
 
@@ -325,7 +323,7 @@ class Model:
             W = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[
-                    self._word_embedding_dim + self._char_embedding_dim,
+                    self._word_embedding_dim + self._char_rnn_encoder_hidden_dim * 2,
                     self._combined_embedding_dim
                 ],
                 name="weight"
@@ -349,14 +347,10 @@ class Model:
         :return:
         """
         with tf.name_scope("combine_word_and_character_embedding"):
-            dropout_layer = tf.nn.dropout(
-                x=tf.concat(values=[word_embedded, character_embedded], axis=-1),
-                keep_prob=self._dropout_keep_prob
-            )
             return tf.nn.relu(
                 tf.add(
                     tf.matmul(
-                        a=dropout_layer,
+                        a=tf.concat(values=[word_embedded, character_embedded], axis=-1),
                         b=params["W"]
                     ),
                     params["b"]
@@ -369,7 +363,7 @@ class Model:
         :param word_embedding:
         :param combine_layer_params
         :return:
-            [batch_size, max_question_length, word_embedding_dim]
+            [batch_size, max_question_length, highway_transform_layer_2_dim]
         """
         char_embedded_question = tf.nn.embedding_lookup(
             params=character_based_word_embedding,
@@ -384,7 +378,7 @@ class Model:
             self._combine_embedding(
                 params=combine_layer_params,
                 word_embedded=tf.reshape(word_embedded_question, shape=[-1, self._word_embedding_dim]),
-                character_embedded=tf.reshape(char_embedded_question, shape=[-1, self._char_embedding_dim])
+                character_embedded=tf.reshape(char_embedded_question, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
             ),
             shape=[self._batch_size, self._max_question_length, self._combined_embedding_dim]
         )
@@ -472,7 +466,7 @@ class Model:
                 self._combine_embedding(
                     params=combine_layer_params,
                     word_embedded=tf.reshape(word_embedded, shape=[-1, self._word_embedding_dim]),
-                    character_embedded=tf.reshape(char_embedded, shape=[-1, self._word_embedding_dim])
+                    character_embedded=tf.reshape(char_embedded, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
                 ),
                 shape=[self._batch_size, self._max_table_name_length, self._combined_embedding_dim]
             ),
@@ -497,7 +491,7 @@ class Model:
             params=word_embedding,
             ids=self._column_name_word_ids
         )
-        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_embedding_dim])
+        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
         flatten_word_embedded = tf.reshape(word_embedded, shape=[-1, self._word_embedding_dim])
 
         # Shape: [batch_size, max_column_num, combined_embedding_dim]
@@ -505,8 +499,8 @@ class Model:
             tf.reshape(
                 self._combine_embedding(
                     params=combine_layer_params,
-                    word_embedded=flatten_char_embedded,
-                    character_embedded=flatten_word_embedded
+                    word_embedded=flatten_word_embedded,
+                    character_embedded=flatten_char_embedded
                 ),
                 shape=[self._batch_size, self._max_column_num, self._max_column_name_length,
                        self._combined_embedding_dim]
@@ -543,7 +537,7 @@ class Model:
             params=word_embedding,
             ids=self._cell_value_word_ids
         )
-        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_embedding_dim])
+        flatten_char_embedded = tf.reshape(char_embedded, shape=[-1, self._char_rnn_encoder_hidden_dim * 2])
         flatten_word_embedded = tf.reshape(word_embedded, shape=[-1, self._word_embedding_dim])
 
         # Shape: [batch_size, max_column_num, max_cell_value_num_per_col, combined_embedding_dim]
@@ -551,8 +545,8 @@ class Model:
             tf.reshape(
                 self._combine_embedding(
                     params=combine_layer_params,
-                    word_embedded=flatten_char_embedded,
-                    character_embedded=flatten_word_embedded
+                    word_embedded=flatten_word_embedded,
+                    character_embedded=flatten_char_embedded
                 ),
                 shape=[
                     self._batch_size,
@@ -707,7 +701,7 @@ class Model:
     def _calc_attention(self, table_representation, question_representation):
         """
         :param table_representation:    [batch_size, table_size, table_extra_transform_dim]
-        :param question_representation: [batch_size, max_question_length, table_extra_transform_dim]
+        :param question_representation: [batch_size, max_question_length, highway_transform_layer_2_dim]
         :return:
         """
         # Shape: [batch_size, max_question_length*self.table_size, table_extra_transform_dim]
@@ -715,7 +709,7 @@ class Model:
             table_representation,
             multiples=[1, self._max_question_length, 1]
         )
-        # Shape: [batch_size, max_question_length*self.table_size, table_extra_transform_dim]
+        # Shape: [batch_size, max_question_length*self.table_size, highway_transform_layer_2_dim]
         temp = tf.tile(
             tf.expand_dims(
                 question_representation,
@@ -725,7 +719,7 @@ class Model:
         )
         expanded_question_representation = tf.reshape(
             temp,
-            shape=[self._batch_size, self._max_question_length*self._table_size, self._table_extra_transform_dim]
+            shape=[self._batch_size, self._max_question_length*self._table_size, self._highway_transform_layer_2_dim]
         )
 
         with tf.name_scope("attention_scoring"):
@@ -748,21 +742,7 @@ class Model:
         :return:
         """
         with tf.variable_scope("scoring"):
-            alpha = tf.get_variable(
-                initializer=tf.random_uniform_initializer(
-                    minval=0,
-                    maxval=1
-                ),
-                shape=[1],
-                dtype=tf.float32,
-                name="alpha"
-            )
-            # Shape: [batch_size, max_question_length, table_size]
-            scores = tf.add(
-                alpha * tf.nn.softmax(self._exact_match_matrix, dim=-1),
-                (1 - alpha) * tf.nn.softmax(attention_scores, dim=-1)
-            )
-
+            scores = attention_scores
             return tf.nn.softmax(scores, dim=-1)
 
     def _calc_ground_truth_index(self):
@@ -842,10 +822,10 @@ class Model:
             column_name_representation=column_name_representation
         )
 
-        # Shape: [2, table_extra_dim]
+        # Shape: [2, table_extra_transform_dim]
         embedded_special_tag = self._transform_special_tag(special_tag_embedding)
 
-        # Shape: [batch_size, table_size, table_extra_dim]
+        # Shape: [batch_size, table_size, table_extra_transform_dim]
         table_representation = self._flatten_table(
             table_name_representation=table_name_representation,
             column_name_representation=column_name_representation,

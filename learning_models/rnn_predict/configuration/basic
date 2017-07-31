@@ -1,4 +1,4 @@
-name: EntityBinding
+name: rnn_predict
 max_question_length:              22
 max_word_length:                  22
 word_embedding_dim:               50
@@ -71,6 +71,8 @@ embedding:
     - vocab
     - word_embedding.npy
 learning_rate:        0.0001
+learning_rate_decay_interval: 0.8
+learning_rate_decay_interval: 10
 log_dir:              log
 result_log:           result_log
 checkpoint_path:      checkpoint

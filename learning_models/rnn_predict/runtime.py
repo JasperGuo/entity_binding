@@ -182,7 +182,8 @@ class ModelRuntime:
         try:
             best_accuracy = 0
             epoch_log_file = os.path.join(self._result_log_base_path, "epoch_result.log")
-            curr_learning = self._config["learning_rate"]
+            curr_learning_rate = self._config["learning_rate"]
+            last_updated_epoch = 0
             for epoch in tqdm(range(self._epoches)):
                 self._train_data_iterator.shuffle()
                 losses = list()
@@ -191,7 +192,7 @@ class ModelRuntime:
                 file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + "_" + str(epoch) + ".log")
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
-                    batch.learning_rate = curr_learning
+                    batch.learning_rate = curr_learning_rate
                     scores, predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
                     scores, predictions, loss, optimizer = self._session.run(
                         (scores, predictions, loss, optimizer),
@@ -203,10 +204,6 @@ class ModelRuntime:
                         ground_truth=batch.ground_truth
                     )
                     losses.append(loss)
-                    """
-                    if epoch % 10 == 0:
-                        self.log(file=file, batch=batch, predictions=predictions)
-                    """
 
                 train_acc = train_correct / total
 
@@ -216,7 +213,7 @@ class ModelRuntime:
                 average_loss = np.average(np.array(losses))
                 tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f" % (epoch, average_loss, train_acc, dev_accuracy))
 
-                if dev_accuracy > best_accuracy:
+                if dev_accuracy >= best_accuracy:
                     best_accuracy = dev_accuracy
                     self._saver.save(self._session, self._best_checkpoint_file)
 

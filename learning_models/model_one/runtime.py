@@ -216,7 +216,7 @@ class ModelRuntime:
                 average_loss = np.average(np.array(losses))
                 tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f" % (epoch, average_loss, train_acc, dev_accuracy))
 
-                if dev_accuracy > best_accuracy:
+                if dev_accuracy >= best_accuracy:
                     best_accuracy = dev_accuracy
                     self._saver.save(self._session, self._best_checkpoint_file)
 
@@ -243,7 +243,7 @@ class ModelRuntime:
     def run(self, is_test=False, is_log=False):
         if is_test:
             self._test_data_iterator = BatchIterator(
-                serialized_file=self._config["training"]["batches"]
+                serialized_file=self._config["test"]["batches"]
             )
             self.test(self._test_data_iterator, True)
         else:
