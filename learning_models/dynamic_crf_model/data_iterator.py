@@ -555,7 +555,7 @@ if __name__ == "__main__":
         "..\\..\\tf_data\\test\\questions.txt",
         22,
         22,
-        20
+        2
     )
     data_iterator.save_batches("test_batch")
 

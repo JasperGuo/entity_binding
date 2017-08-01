@@ -15,8 +15,8 @@ cell_value_encoder_layer_1_dim:   100
 cell_value_encoder_layer_2_dim:   100
 table_name_and_column_name_transform_dim: 100
 transition_score_weight_dim:      50
-batch_size:                       18
-test_batch_size:                  20
+batch_size:                       2
+test_batch_size:                  2
 epoches:                          300
 gradient_clip:                    5
 dropout:                          0.5

@@ -134,7 +134,6 @@ class ModelRuntime:
                 string += ("t: " + (', '.join([str(i) for i in t])) + "\n")
                 string += ("p: " + (', '.join([str(i) for i in p])) + "\n")
                 string += ("Result: " + str(result == 0) + "\n")
-                # string += ("s: " + str(scores) + "\n")
             f.write(string)
 
     def _epoch_log(self, file, num_epoch, train_accuracy, dev_accuracy, average_loss):
@@ -192,9 +191,9 @@ class ModelRuntime:
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
                     batch.learning_rate = curr_learning
-                    scores, predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
-                    scores, predictions, loss, optimizer = self._session.run(
-                        (scores, predictions, loss, optimizer),
+                    predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
+                    predictions, loss, optimizer = self._session.run(
+                        (predictions, loss, optimizer),
                         feed_dict=feed_dict
                     )
                     total += batch.size
@@ -204,7 +203,7 @@ class ModelRuntime:
                     )
                     losses.append(loss)
                     """
-                    if epoch % 10 == 0:
+                    if i == 10:
                         self.log(file=file, batch=batch, predictions=predictions)
                     """
 
