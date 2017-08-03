@@ -558,4 +558,3 @@ if __name__ == "__main__":
         2
     )
     data_iterator.save_batches("test_batch")
-

@@ -17,7 +17,7 @@ cell_value_encoder_layer_2_dim:   100
 table_name_and_column_name_transform_dim: 100
 scoring_weight_dim:               50
 batch_size:                       18
-test_batch_size:                  20
+test_batch_size:                  34
 epoches:                          600
 gradient_clip:                    5
 dropout:                          0.5
@@ -69,7 +69,8 @@ embedding:
     - tf_data
     - vocab
     - word_embedding.npy
-learning_rate:        0.0001
+learning_rate:         0.001
+minimum_learning_rate: 0.00001
 log_dir:              log
 result_log:           result_log
 checkpoint_path:      checkpoint

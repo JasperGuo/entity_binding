@@ -297,4 +297,4 @@ def main(question_file, table_file, _id=None):
 
 
 if __name__ == "__main__":
-    main("lemmatized_preprocessed_training_questions.txt", "lemmatized_preprocessed_training_tables.txt")
+    main("lemmatized_preprocessed_unlabeled_questions.txt", "lemmatized_preprocessed_unlabeled_tables.txt")

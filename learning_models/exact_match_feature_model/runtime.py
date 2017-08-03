@@ -183,6 +183,8 @@ class ModelRuntime:
             best_accuracy = 0
             epoch_log_file = os.path.join(self._result_log_base_path, "epoch_result.log")
             curr_learning = self._config["learning_rate"]
+            minimum_learning_rate = self._config["minimum_learning_rate"]
+            last_10_accuracy = 0.0
             for epoch in tqdm(range(self._epoches)):
                 self._train_data_iterator.shuffle()
                 losses = list()
@@ -209,11 +211,17 @@ class ModelRuntime:
                 dev_accuracy = self.test(self._dev_data_iterator, is_log=False)
 
                 average_loss = np.average(np.array(losses))
-                tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f" % (epoch, average_loss, train_acc, dev_accuracy))
+                tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f, learning_rate: %f" % (epoch, average_loss, train_acc, dev_accuracy, curr_learning))
 
-                if dev_accuracy >= best_accuracy:
+                if dev_accuracy > best_accuracy:
                     best_accuracy = dev_accuracy
                     self._saver.save(self._session, self._best_checkpoint_file)
+
+                # Learning rate decay:
+                if epoch > 0 and epoch % 10 == 0:
+                    if dev_accuracy <= last_10_accuracy and curr_learning > minimum_learning_rate:
+                        curr_learning /= 2
+                    last_10_accuracy = dev_accuracy
 
                 self._epoch_log(
                     file=epoch_log_file,

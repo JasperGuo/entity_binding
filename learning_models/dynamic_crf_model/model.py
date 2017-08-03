@@ -758,7 +758,7 @@ class Model:
                 tf.tile(
                     tf.reshape(
                         tf.matmul(
-                            a=tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
+                            tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
                             b=w_t_1
                         ),
                         shape=[self._batch_size, self._table_size+1, self._transition_score_weight_dim]
@@ -773,7 +773,7 @@ class Model:
                     tf.expand_dims(
                         tf.reshape(
                             tf.matmul(
-                                a=tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
+                                tf.reshape(new_table_representation, [-1, self._table_extra_transform_dim]),
                                 b=w_t_2
                             ),
                             shape=[self._batch_size, self._table_size+1, self._transition_score_weight_dim]
@@ -1256,7 +1256,7 @@ class Model:
             tag_scores=self._neural_scores,
             transition_scores=self._transition_score
         )
-
+        """
         assert_op = tf.Assert(
             condition=tf.equal(
                 tf.reduce_sum(tf.sign(tf.subtract(total_scores, ground_truth_scores))),
@@ -1264,10 +1264,11 @@ class Model:
             ),
             data=[ground_truth_scores, total_scores]
         )
+        """
 
         # total_scores = tf.Print(total_scores, [total_scores], message="Total scores: ")
-        with tf.control_dependencies([assert_op]):
-            self._loss = tf.negative(tf.reduce_mean(ground_truth_scores - total_scores))
+        # with tf.control_dependencies([assert_op]):
+        self._loss = tf.negative(tf.reduce_mean(ground_truth_scores - total_scores))
         # self._loss = tf.check_numerics(self._loss, message="loss nan...")
 
         with tf.name_scope("back_propagation"):

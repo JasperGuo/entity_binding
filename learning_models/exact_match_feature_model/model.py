@@ -743,12 +743,12 @@ class Model:
         with tf.name_scope("attention_scoring"):
 
             with tf.variable_scope("attention_scoring_weights"):
-                w_t = tf.get_variable(
+                w_x = tf.get_variable(
                     initializer=tf.contrib.layers.xavier_initializer(),
                     shape=[self._table_extra_transform_dim, self._scoring_weight_dim],
                     name="table_weight"
                 )
-                w_q = tf.get_variable(
+                w_s = tf.get_variable(
                     initializer=tf.contrib.layers.xavier_initializer(),
                     shape=[self._highway_transform_layer_2_dim, self._scoring_weight_dim],
                     name="question_weight"
@@ -769,6 +769,9 @@ class Model:
                     name="v"
                 )
 
+            h_x = tf.multiply(x=expanded_table_representation, y=expanded_question_representation)
+            h_s = tf.abs(tf.subtract(x=expanded_question_representation, y=expanded_table_representation))
+
             return tf.reshape(
                 tf.matmul(
                     tf.nn.relu(
@@ -776,13 +779,13 @@ class Model:
                             tf.matmul(
                                 a=tf.concat(
                                     values=[
-                                        expanded_question_representation,
-                                        expanded_table_representation,
+                                        h_x,
+                                        h_s,
                                         tf.reshape(exact_match_feature, shape=[-1, self._exact_match_embedding_dim])
                                     ],
                                     axis=-1
                                 ),
-                                b=tf.concat(values=[w_q, w_t, w_e], axis=0)
+                                b=tf.concat(values=[w_x, w_s, w_e], axis=0)
                             ),
                             bias
                         ),
@@ -939,7 +942,9 @@ class Model:
         )
 
         with tf.name_scope("back_propagation"):
-            optimizer = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
+            optimizer = tf.train.AdamOptimizer(
+                learning_rate=self._learning_rate
+            )
 
             # clipped at 5 to alleviate the exploding gradient problem
             self._gvs = optimizer.compute_gradients(self._loss)

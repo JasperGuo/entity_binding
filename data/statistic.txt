@@ -1,4 +1,0 @@
-Training:
-    Questions: 847
-    Tables: 615
-

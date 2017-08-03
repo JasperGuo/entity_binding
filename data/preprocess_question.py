@@ -119,4 +119,4 @@ def main(file, table_file):
 
 
 if __name__ == "__main__":
-    main("training_questions.txt", "preprocessed_training_tables.txt")
+    main("unlabeled_questions.txt", "preprocessed_unlabeled_tables.txt")
