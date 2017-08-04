@@ -55,7 +55,7 @@ class Model:
         self._question_rnn_encoder_hidden_dim = opts["question_rnn_encoder_hidden_dim"]
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
-        self._transition_score_weight_dim = opts["transition_score_weight_dim"]
+        # self._transition_score_weight_dim = opts["transition_score_weight_dim"]
 
         self._highway_transform_layer_1_dim = opts["highway_transform_layer_1_dim"]
         self._highway_transform_layer_2_dim = opts["highway_transform_layer_2_dim"]
@@ -257,17 +257,17 @@ class Model:
                 name="column_data_type_embedding"
             )
 
-        with tf.variable_scope("special_transition_tag_embedding_layer"):
-            # Begin & End
-            special_transition_tag_embedding = tf.get_variable(
-                initializer=tf.truncated_normal(
-                    [1, self._table_extra_transform_dim],
-                    stddev=0.5
-                ),
-                name="special_transition_tag_embedding"
-            )
+        # with tf.variable_scope("special_transition_tag_embedding_layer"):
+        #     # Begin & End
+        #     special_transition_tag_embedding = tf.get_variable(
+        #         initializer=tf.truncated_normal(
+        #             [1, self._table_extra_transform_dim],
+        #             stddev=0.5
+        #         ),
+        #         name="special_transition_tag_embedding"
+        #     )
 
-        return word_embedding, char_embedding, column_data_type_embedding, special_tag_embedding, special_transition_tag_embedding
+        return word_embedding, char_embedding, column_data_type_embedding, special_tag_embedding
 
     def _encode_word(self, embedded_character, word_length):
         """
@@ -1108,10 +1108,58 @@ class Model:
             )
             return predictions
 
+    def _get_transition_scores(self):
+        """
+        Get transition score variable
+        :return:
+            Shape: [batch_size, table_size + 1, table_size + 1]
+        """
+        with tf.variable_scope("transition_score"):
+            # PAT, LIT, TAB, COL, CELL, START
+            initial_score = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[6, 6],
+                name="tag_transition_score"
+            )
+
+            # Shape: [3, 5]
+            template = tf.constant([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0]], dtype=tf.float32)
+
+            # Shape: [max_column_num, 5]
+            template_1 = tf.tile(
+                tf.constant([[0, 0, 0, 1, 0, 0]], dtype=tf.float32),
+                multiples=[self._max_column_num, 1],
+            )
+
+            # Shape: [max_column_num*max_cell_value_num_per_col, 5]
+            template_2 = tf.tile(
+                tf.constant([[0, 0, 0, 0, 1, 0]], dtype=tf.float32),
+                multiples=[self._max_column_num*self._max_cell_value_num_per_col, 1]
+            )
+
+            # Shape: [3 + max_column_num + max_column_num*max_cell_value_num_per_col + 1, 5]
+            template = tf.concat(
+                [
+                    template,
+                    template_1,
+                    template_2,
+                    tf.constant([[0, 0, 0, 0, 0, 1]], dtype=tf.float32)
+                ],
+                axis=0
+            )
+
+            scores = tf.matmul(initial_score, template, transpose_b=True)
+            scores = tf.tile(
+                tf.expand_dims(tf.matmul(template, scores), axis=0),
+                multiples=[self._batch_size, 1, 1]
+            )
+
+            return scores
+
     def _build_graph(self):
         self._build_input_nodes()
         self._set_dynamic_value()
-        word_embedding, character_embedding, data_type_embedding, special_tag_embedding, special_transition_tag_embedding = self._build_embedding()
+        word_embedding, character_embedding, data_type_embedding, special_tag_embedding = self._build_embedding()
 
         embedded_character = tf.nn.embedding_lookup(
             params=character_embedding,
@@ -1180,10 +1228,13 @@ class Model:
         )
 
         # Shape: [batch_size, table_size+1, table_size+1]
-        self._transition_score = self._calc_transition_score(
-            table_representation=table_representation,
-            special_transition_tag_embedding=special_transition_tag_embedding
-        )
+        # self._transition_score = self._calc_transition_score(
+        #     table_representation=table_representation,
+        #     special_transition_tag_embedding=special_transition_tag_embedding
+        # )
+
+        # Shape: [batch_size, table_size+1, table_size+1]
+        self._transition_score = self._get_transition_scores()
 
         # Shape: [batch_size, max_question_length, table_size + 1]
         self._neural_scores = tf.concat(
