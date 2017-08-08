@@ -104,14 +104,63 @@ class ModelRuntime:
                 self._saver.restore(self._session, checkpoint)
             self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
 
-    def _check_predictions(self, predictions, ground_truth):
+    def _check_predictions(self,
+                           tag_predictions,
+                           segment_length_predictions,
+                           ground_truth,
+                           ground_truth_segment_length,
+                           ground_truth_segmentation_length,
+                           question_length):
         """
-        :param predictions:     [batch_size, max_question_length]
-        :param ground_truth:    [batch_size, max_question_length]
+        :param tag_predictions:             [batch_size, max_question_length]
+        :param segment_length_predictions:  [batch_size, max_question_length]
+        :param ground_truth:                [batch_size, max_question_length]
+        :param ground_truth_segment_length: [batch_size, max_question_length]
+        :param ground_truth_segmentation_length: [batch_size]
+        :param question_length:             [batch_size]
         :return:
         """
+        predictions = list()
+        truths = list()
+        for i in range(self._batch_size):
+            _predicted_tags = tag_predictions[i]
+            _predicted_segment_length = segment_length_predictions[i]
+            _ground_truth = ground_truth[i]
+            _ground_truth_segment_length = ground_truth_segment_length[i]
+
+            _predictions_list = list()
+            _ground_truth_list = list()
+
+            _question_length = question_length[i]
+            _ground_truth_segmentation_length = ground_truth_segmentation_length[i]
+
+            _mask = np.less(np.arange(self._config["max_question_length"]), _ground_truth_segmentation_length)
+            _ground_truth_segment_length = np.array(_ground_truth_segment_length) * _mask
+
+            for pt, ps, gt, gs in zip(_predicted_tags, _predicted_segment_length, _ground_truth, _ground_truth_segment_length):
+                for j in range(ps):
+                    _predictions_list.append(pt)
+                for j in range(gs):
+                    _ground_truth_list.append(gt)
+
+            _predictions_list += [0] * (self._config["max_question_length"] - len(_predictions_list))
+            _ground_truth_list += [0] * (self._config["max_question_length"] - len(_ground_truth_list))
+
+            _mask = np.less(np.arange(self._config["max_question_length"]), _question_length)
+
+            print(_mask, _mask.shape)
+            print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
+            print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
+            print("==========================")
+
+            _predictions_list = np.array(_predictions_list) * _mask
+            _ground_truth_list += np.array(_ground_truth_list) * _mask
+
+            predictions.append(_predictions_list)
+            truths.append(_ground_truth_list)
+
         p = np.array(predictions)
-        g = np.array(ground_truth)
+        g = np.array(truths)
         result = np.sum(np.abs(p - g), axis=-1)
         correct = 0
         for idx, r in enumerate(result):
@@ -122,18 +171,28 @@ class ModelRuntime:
                 # tqdm.write("======================================")
         return correct
 
-    def log(self, file, batch, predictions, is_detail=False):
+    def log(self, file, batch, tag_predictions, segment_length_predictions):
         with open(file, "a") as f:
             string = ""
-            for t, p, qid, cv, table_id in zip(batch.ground_truth, predictions, batch.questions_ids, batch.cell_value_length, batch.table_map_ids):
+            for tt, ts, pt, ps, qid, cv, table_id in zip(
+                    batch.ground_truth,
+                    batch.ground_truth_segment_length,
+                    tag_predictions,
+                    segment_length_predictions,
+                    batch.questions_ids,
+                    batch.cell_value_length,
+                    batch.table_map_ids
+            ):
                 result = np.sum(np.abs(np.array(p) - np.array(t)), axis=-1)
                 string += "=======================\n"
                 string += ("id: " + str(qid) + "\n")
                 string += ("tid: " + str(table_id) + "\n")
                 string += ("max_column: " + str(len(cv)) + "\n")
                 string += ("max_cell_value_per_col: " + str(len(cv[0])) + "\n")
-                string += ("t: " + (', '.join([str(i) for i in t])) + "\n")
-                string += ("p: " + (', '.join([str(i) for i in p])) + "\n")
+                string += ("tt: " + (', '.join([str(i) for i in tt])) + "\n")
+                string += ("ts: " + (', '.join([str(i) for i in ts])) + "\n")
+                string += ("pt: " + (', '.join([str(i) for i in pt])) + "\n")
+                string += ("ps: " + (', '.join([str(i) for i in ps])) + "\n")
                 string += ("Result: " + str(result == 0) + "\n")
                 # string += ("s: " + str(scores) + "\n")
             f.write(string)
@@ -158,12 +217,19 @@ class ModelRuntime:
         file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + ".log")
         for i in tqdm(range(data_iterator.batch_per_epoch)):
             batch = data_iterator.get_batch()
-            predictions, feed_dict = self._test_model.predict(batch)
-            predictions = self._session.run(predictions, feed_dict=feed_dict)
+            tag_predictions, segment_length_predictions, feed_dict = self._test_model.predict(batch)
+            tag_predictions, segment_length_predictions = self._session.run(
+                (tag_predictions, segment_length_predictions,),
+                feed_dict=feed_dict
+            )
 
             correct += self._check_predictions(
-                predictions=predictions,
-                ground_truth=batch.ground_truth
+                tag_predictions=tag_predictions,
+                segment_length_predictions=segment_length_predictions,
+                ground_truth=batch.ground_truth,
+                ground_truth_segment_length=batch.ground_truth_segment_length,
+                ground_truth_segmentation_length=batch.ground_truth_segmentation_length,
+                question_length=batch.questions_length
             )
 
             total += batch.size
@@ -172,7 +238,8 @@ class ModelRuntime:
                 self.log(
                     file=file,
                     batch=batch,
-                    predictions=predictions
+                    tag_predictions=tag_predictions,
+                    segment_length_predictions=segment_length_predictions
                 )
 
         accuracy = float(correct)/float(total)
@@ -195,15 +262,19 @@ class ModelRuntime:
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
                     batch.learning_rate = curr_learning
-                    predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
-                    predictions, loss, optimizer = self._session.run(
-                        (predictions, loss, optimizer),
+                    tag_predictions, segment_length_predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
+                    tag_predictions, segment_length_predictions, loss, optimizer = self._session.run(
+                        (tag_predictions, segment_length_predictions, loss, optimizer),
                         feed_dict=feed_dict
                     )
                     total += batch.size
                     train_correct += self._check_predictions(
-                        predictions=predictions,
-                        ground_truth=batch.ground_truth
+                        tag_predictions=tag_predictions,
+                        segment_length_predictions=segment_length_predictions,
+                        ground_truth=batch.ground_truth,
+                        ground_truth_segment_length=batch.ground_truth_segment_length,
+                        ground_truth_segmentation_length=batch.ground_truth_segmentation_length,
+                        question_length=batch.questions_length
                     )
                     losses.append(loss)
                 train_acc = train_correct / total

@@ -51,6 +51,7 @@ class Batch:
         word_character_matrix       [None, max_word_length]
         word_character_length       [None]
         ground_truth                [batch_size, max_question_length]
+        ground_truth_segment_length [batch_size, max_question_length]
         exact_match_matrix          [batch_size, max_question_length, None]
         """
         self.questions_ids = kwargs["questions_id"]
@@ -71,6 +72,9 @@ class Batch:
         self.word_character_matrix = kwargs["word_character_matrix"]
         self.word_character_length = kwargs["word_character_length"]
         self.ground_truth = kwargs["ground_truth"]
+        self.ground_truth_segmentation_length = kwargs["ground_truth_segmentation_length"]
+        self.ground_truth_segment_length = kwargs["ground_truth_segment_length"]
+        self.ground_truth_segment_position = kwargs["ground_truth_segment_position"]
         self.exact_match_matrix = kwargs["exact_match_matrix"]
         self._learning_rate = 0.0
 
@@ -91,6 +95,9 @@ class Batch:
         print("Question char ids: ", self.questions_char_ids, np.array(self.questions_char_ids).shape)
         print("Question word ids: ", self.questions_word_ids, np.array(self.questions_word_ids).shape)
         print("Ground truth: ", self.ground_truth, np.array(self.ground_truth).shape)
+        print("Ground truth segmentation length: ", self.ground_truth_segmentation_length, np.array(self.ground_truth_segmentation_length).shape)
+        print("Ground truth segment length: ", self.ground_truth_segment_length, np.array(self.ground_truth_segment_length).shape)
+        print("Ground truth segment position: ", self.ground_truth_segment_position, np.array(self.ground_truth_segment_position).shape)
         print("Exact match matrix: ", self.exact_match_matrix, "\n", np.array(self.exact_match_matrix).shape)
         print("Table name length: ", self.tables_name_length)
         print("Table name char ids: ", self.tables_name_char_ids, np.array(self.tables_name_char_ids).shape)
@@ -117,7 +124,7 @@ class DataIterator:
             table_dict[table["map_id"]] = table
         return table_dict
 
-    def __init__(self, tables_file, questions_file, max_question_length, max_word_length, batch_size):
+    def __init__(self, tables_file, questions_file, max_question_length, max_word_length, max_segment_length, batch_size):
         """
         :param tables_file:
         :param questions_file:
@@ -131,6 +138,7 @@ class DataIterator:
         self._questions = read_file(questions_file)
         self._max_question_length = max_question_length
         self._max_word_length = max_word_length
+        self._max_segment_length = max_segment_length
         self._batch_size = batch_size
         self._size = len(self._questions)
         self._batch_per_epoch = int(math.floor(self._size / self._batch_size))
@@ -228,6 +236,39 @@ class DataIterator:
                 reindexed.append(valid_idx)
         return reindexed
 
+    def _grounp_by_segment(self, ground_truth):
+        segment_length = list()
+        segment_tag = list()
+        segment_position = list()
+        v, i = None, 0
+        for index, value in enumerate(ground_truth):
+            if v is None:
+                v = value
+                i = index
+            else:
+                if v != value or v == 0:
+                    segment_tag.append(v)
+                    segment_length.append(index - i)
+                    segment_position.append(index)
+                    v = value
+                    i = index
+                else:
+                    if index - i >= self._max_segment_length:
+                        segment_tag.append(v)
+                        segment_length.append(index - i)
+                        segment_position.append(index)
+                        v = value
+                        i = index
+
+        segment_tag.append(v)
+        segment_length.append(len(ground_truth) - i)
+        segment_position.append(len(ground_truth))
+        segmentation_length = len(segment_tag)
+        segment_tag += [self.PAD_ID] * (self._max_question_length - len(segment_tag))
+        segment_length += [1] * (self._max_question_length - len(segment_length))
+        segment_position += [0] * (self._max_question_length - len(segment_position))
+        return segmentation_length, segment_tag, segment_length, segment_position
+
     def _construct_exact_match_matrix(self, exact_match, table, max_column_num, max_cell_value_num_per_col):
         """
         :param exact_match:
@@ -318,6 +359,13 @@ class DataIterator:
         # Ground truth
         # Shape: [batch_size, max_question_length]
         ground_truth = list()
+        ground_truth_segment_length = list()
+        ground_truth_segment_position = list()
+
+        # Ground truth segmentation length
+        # Shape: [batch_size]
+        ground_truth_segmentation_length = list()
+
         # Exact match matrix
         # Shape: [batch_size, max_question_length, table_size]
         exact_match_matrix = list()
@@ -328,8 +376,16 @@ class DataIterator:
                 max_column_num=max_column_num,
                 max_cell_value_num_per_col=max_cell_value_num_per_col
             )
-            ground_truth.append(
-                reindexed_ground_truth + [self.PAD_ID] * (self._max_question_length - len(q["ground_truth"])))
+
+            segmentation_length, seg_tag, seg_length, seg_pos = self._grounp_by_segment(
+                # reindexed_ground_truth + [self.PAD_ID] * (self._max_question_length - len(q["ground_truth"]))
+                reindexed_ground_truth
+            )
+            ground_truth_segmentation_length.append(segmentation_length)
+            ground_truth.append(seg_tag)
+            ground_truth_segment_length.append(seg_length)
+            ground_truth_segment_position.append(seg_pos)
+
             matrix = self._construct_exact_match_matrix(
                 exact_match=q["exact_match"],
                 table=self._tables_dict[q["table_map_id"]],
@@ -484,6 +540,9 @@ class DataIterator:
             questions_word_ids=questions_word_ids,
             questions_char_ids=questions_char_ids,
             ground_truth=ground_truth,
+            ground_truth_segmentation_length=ground_truth_segmentation_length,
+            ground_truth_segment_length=ground_truth_segment_length,
+            ground_truth_segment_position=ground_truth_segment_position,
             exact_match_matrix=exact_match_matrix,
             table_map_ids=table_map_ids,
             tables_name_length=tables_name_length,
@@ -551,10 +610,22 @@ class BatchIterator:
 
 if __name__ == "__main__":
     data_iterator = DataIterator(
-        "..\\..\\tf_data\\test\\tables.txt",
-        "..\\..\\tf_data\\test\\questions.txt",
-        22,
-        22,
-        2
+        tables_file="..\\..\\tf_data\\test\\tables.txt",
+        questions_file="..\\..\\tf_data\\test\\questions.txt",
+        max_question_length=22,
+        max_word_length=22,
+        max_segment_length=5,
+        batch_size=2
     )
     data_iterator.save_batches("test_batch")
+
+    data_iterator = DataIterator(
+        tables_file="..\\..\\tf_data\\training\\tables.txt",
+        questions_file="..\\..\\tf_data\\training\\questions.txt",
+        max_question_length=22,
+        max_word_length=22,
+        max_segment_length=5,
+        batch_size=2
+    )
+    data_iterator.save_batches("training_batch")
+
