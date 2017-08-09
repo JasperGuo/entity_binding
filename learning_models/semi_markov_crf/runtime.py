@@ -148,10 +148,10 @@ class ModelRuntime:
 
             _mask = np.less(np.arange(self._config["max_question_length"]), _question_length)
 
-            print(_mask, _mask.shape)
-            print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
-            print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
-            print("==========================")
+            # print(_mask, _mask.shape)
+            # print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
+            # print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
+            # print("==========================")
 
             _predictions_list = np.array(_predictions_list) * _mask
             _ground_truth_list += np.array(_ground_truth_list) * _mask

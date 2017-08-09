@@ -546,6 +546,28 @@ class Model:
             segment_tensor, shape=[self._batch_size, self._max_segment_length, self._max_question_length, self._highway_transform_layer_2_dim]
         )
 
+        mask = tf.cast(
+            tf.expand_dims(
+                tf.tile(
+                    tf.expand_dims(
+                        tf.less(
+                            tf.tile(
+                                tf.expand_dims(tf.range(self._max_question_length), axis=0),
+                                multiples=[self._batch_size, 1]
+                            ),
+                            tf.reshape(self._questions_length, shape=[self._batch_size, 1])
+                        ),
+                        axis=1
+                    ),
+                    multiples=[1, self._max_segment_length, 1]
+                ),
+                axis=3
+            ),
+            dtype=tf.float32
+        )
+
+        segment_representation = tf.multiply(segment_representation, mask)
+
         return segment_representation
 
     def _encode_table_name(self, character_based_word_embedding, word_embedding, combine_layer_params):
@@ -931,32 +953,32 @@ class Model:
                 shape=[self._batch_size, self._max_segment_length, self._max_question_length, self._table_size]
             )
 
-            masks = tf.reshape(
-                tf.tile(
-                    tf.expand_dims(
-                        tf.cast(
-                            tf.less(
-                                tf.tile(
-                                    tf.expand_dims(tf.range(self._max_question_length), axis=0),
-                                    multiples=[self._batch_size, 1]
-                                ),
-                                tf.reshape(self._questions_length, shape=[self._batch_size, 1])
-                            ),
-                            dtype=tf.float32
-                        ),
-                        axis=1
-                    ),
-                    multiples=[1, self._max_segment_length, 1]
-                ),
-                shape=[self._batch_size, self._max_segment_length, self._max_question_length, 1]
-            )
+            # masks = tf.reshape(
+            #     tf.tile(
+            #         tf.expand_dims(
+            #             tf.cast(
+            #                 tf.less(
+            #                     tf.tile(
+            #                         tf.expand_dims(tf.range(self._max_question_length), axis=0),
+            #                         multiples=[self._batch_size, 1]
+            #                     ),
+            #                     tf.reshape(self._questions_length, shape=[self._batch_size, 1])
+            #                 ),
+            #                 dtype=tf.float32
+            #             ),
+            #             axis=1
+            #         ),
+            #         multiples=[1, self._max_segment_length, 1]
+            #     ),
+            #     shape=[self._batch_size, self._max_segment_length, self._max_question_length, 1]
+            # )
 
-            return tf.multiply(scores, masks)
+            return scores
 
     def _calc_ground_truth_tag_scores(self, tag_scores):
         """
         Calculate Ground truth tag scores
-        :param tag_scores: [batch_size, max_question_length + 1, max_segment_length, table_size + 1]
+        :param tag_scores: [batch_size, max_question_length, max_segment_length, table_size + 1]
         :return:
             [batch_size, max_question_length]
         """
@@ -1037,26 +1059,28 @@ class Model:
             )
 
         # Shape: [batch_size, max_question_length]
-        scores = tf.multiply(
-            tf.gather_nd(transition_scores, index),
-            tf.cast(
-                tf.less(
-                    tf.tile(
-                        tf.expand_dims(tf.range(self._max_question_length), axis=0),
-                        multiples=[self._batch_size, 1]
-                    ),
-                    tf.reshape(self._ground_truth_segmentation_length, shape=[self._batch_size, 1])
-                ),
-                dtype=tf.float32
-            )
-        )
+        # scores = tf.multiply(
+        #     tf.gather_nd(transition_scores, index),
+        #     tf.cast(
+        #         tf.less(
+        #             tf.tile(
+        #                 tf.expand_dims(tf.range(self._max_question_length), axis=0),
+        #                 multiples=[self._batch_size, 1]
+        #             ),
+        #             tf.reshape(self._ground_truth_segmentation_length, shape=[self._batch_size, 1])
+        #         ),
+        #         dtype=tf.float32
+        #     )
+        # )
+
+        scores = tf.gather_nd(transition_scores, index)
 
         return scores
 
     def _forward(self, tag_scores, transition_scores):
         """
         Semi Markov CRF forward
-        :param tag_scores:          [batch_size, max_question_length+1, max_segment_length, table_size + 1]
+        :param tag_scores:          [batch_size, max_question_length, max_segment_length, table_size + 1]
         :param transition_scores:   [batch_size, table_size+1, table_size + 1]
         Forward algorithm to calculate Z(x)
         :return:
@@ -1064,13 +1088,46 @@ class Model:
         """
         with tf.name_scope("crf_forward"):
 
+            _transposed_transition_scores = tf.transpose(transition_scores, perm=[0, 2, 1])
+
+            def __cond_1(_curr_seg_length, __history, __curr_all_seg_tag_scores, __array):
+                return tf.less(_curr_seg_length, self._max_segment_length)
+
+            def __loop_body_1(_curr_seg_length, __history, __curr_all_seg_tag_scores, __array):
+                __curr_seg = tf.reshape(
+                    tf.slice(__history, begin=[_curr_seg_length, 0, 0], size=[1, self._batch_size, self._table_size + 1]),
+                    shape=[self._batch_size, self._table_size + 1]
+                )
+                __curr_tag = tf.reshape(
+                    tf.slice(__curr_all_seg_tag_scores, begin=[_curr_seg_length, 0, 0], size=[1, self._batch_size, self._table_size + 1]),
+                    shape=[self._batch_size, self._table_size + 1]
+                )
+
+                # Shape: [batch_size, table_size]
+                temp = tf.reduce_logsumexp(
+                    tf.add(
+                        tf.add(
+                            tf.expand_dims(__curr_seg, axis=1),
+                            _transposed_transition_scores
+                        ),
+                        tf.expand_dims(__curr_tag, axis=2)
+                    ),
+                    axis=-1
+                )
+
+                __array = __array.write(_curr_seg_length, temp)
+
+                _next_seg_length = tf.add(_curr_seg_length, 1)
+
+                return _next_seg_length, __history, __curr_all_seg_tag_scores, __array
+
             def __cond(_curr_ts, _history):
                 return tf.less(_curr_ts, self._max_question_length)
 
             def __loop_body(_curr_ts, _history):
                 """
                 :param _curr_ts:    Scalar
-                :param _history:     [batch_size, max_segment_length, table_size+1]
+                :param _history:    [batch_size, max_segment_length, table_size+1]
                 """
                 # Shape: [batch_size, max_segment_length, table_size + 1]
                 curr_tag_scores = tf.reshape(
@@ -1082,28 +1139,23 @@ class Model:
                     shape=[self._batch_size, self._max_segment_length, self._table_size + 1]
                 )
 
-                __scores_1 = tf.add(_history, curr_tag_scores)
-
-                _reshaped_scores = tf.reshape(__scores_1, shape=[self._batch_size*self._max_segment_length, self._table_size + 1])
-                _expanded_transition_scores = tf.reshape(
-                    tf.tile(tf.expand_dims(transition_scores, axis=1), multiples=[1, self._max_segment_length, 1, 1]),
-                    shape=[self._batch_size*self._max_segment_length, self._table_size + 1, self._table_size + 1]
+                _, _, _, __scores_array = tf.while_loop(
+                    cond=__cond_1,
+                    body=__loop_body_1,
+                    loop_vars=[
+                        tf.constant(0),
+                        tf.transpose(_history, perm=[1, 0, 2]),
+                        tf.transpose(curr_tag_scores, perm=[1, 0, 2]),
+                        tf.TensorArray(size=self._max_segment_length, dtype=tf.float32)
+                    ]
                 )
 
-                # Shape: [batch_size, table_size + 1]
+                # Shape: [max_segment_length, batch_size, table_size + 1]
+                __scores_1 = __scores_array.stack()
+
                 __curr_scores = tf.reduce_logsumexp(
                     tf.transpose(
-                        tf.reshape(
-                            tf.reduce_logsumexp(
-                                tf.add(
-                                    tf.expand_dims(_reshaped_scores, axis=1),
-                                    tf.transpose(_expanded_transition_scores, perm=[0, 2, 1])
-                                ),
-                                axis=-1
-                            ),
-                            shape=[self._batch_size, self._max_segment_length, self._table_size + 1]
-                        ),
-                        perm=[0, 2, 1]
+                        __scores_1, perm=[1, 2, 0]
                     ),
                     axis=-1
                 )
@@ -1123,22 +1175,6 @@ class Model:
                 next_ts = tf.add(_curr_ts, 1)
 
                 return next_ts, __history_scores
-
-            # Shape: [batch_size, table_size+1]
-            # start_score = tf.reduce_sum(
-            #     tf.transpose(
-            #         tf.reshape(
-            #             tf.slice(
-            #                 tag_scores,
-            #                 begin=[0, 0, 0, 0],
-            #                 size=[self._batch_size, 1, self._max_segment_length, self._table_size + 1]
-            #             ),
-            #             shape=[self._batch_size, self._max_segment_length, self._table_size + 1]
-            #         ),
-            #         perm=[0, 2, 1]
-            #     ),
-            #     axis=-1
-            # )
 
             # Shape: [batch_size, max_segment_length, table_size + 1]
             history = tf.concat(
@@ -1242,7 +1278,7 @@ class Model:
 
                 # Shape: [batch_size, table_size + 1]
                 __tag_index = tf.mod(__index, self._table_size + 1)
-                __segment_length = tf.cast(tf.divide(__index, self._table_size + 1), dtype=tf.int32) + 1
+                __segment_length = tf.cast(tf.floor(tf.divide(__index, self._table_size + 1)), dtype=tf.int32) + 1
 
                 # Shape: [batch_size, max_segment_length, table_size + 1]
                 __history_scores = tf.reshape(
@@ -1329,14 +1365,11 @@ class Model:
                 perm=[1, 0, 2]
             )
 
-            # segment_length_tensor = tf.Print(segment_length_tensor, [tf.shape(segment_length_tensor)], message="segment length tensor")
-
             tag_predictions = tf.zeros([self._batch_size, self._max_question_length], dtype=tf.int32)
             segment_length_predictions = tf.zeros([self._batch_size, self._max_question_length], dtype=tf.int32)
 
             def __cond_1(_curr_ts, _index, _position, _mask, _tag_predictions, _segment_length_predictions):
-                _curr_ts = tf.Print(_curr_ts, [_curr_ts, _mask], message="ts: ")
-                return tf.logical_or(
+                return tf.logical_and(
                     tf.less(_curr_ts, self._max_question_length),
                     tf.not_equal(tf.reduce_sum(_mask), self._batch_size)
                 )
@@ -1641,6 +1674,17 @@ class Model:
             transition_scores=self._transition_score
         )
 
+        total_scores = tf.Print(total_scores, [ground_truth_scores, total_scores], message="Scores: ")
+
+        # assert_op = tf.Assert(
+        #     condition=tf.equal(
+        #         tf.reduce_sum(tf.sign(tf.subtract(total_scores, ground_truth_scores))),
+        #         tf.constant(self._batch_size, dtype=tf.float32)
+        #     ),
+        #     data=[ground_truth_scores, total_scores]
+        # )
+
+        # with tf.control_dependencies([assert_op]):
         self._loss = tf.negative(tf.reduce_mean(ground_truth_scores - total_scores))
 
         with tf.name_scope("back_propagation"):

@@ -127,4 +127,4 @@ if __name__ == "__main__":
     # arg_parser = argparse.ArgumentParser("Path of tables file")
     # arg_parser.add_argument("--file", help="path")
     # args = arg_parser.parse_args()
-    main("unlabeled_tables.txt")
+    main("all_tables.txt")

@@ -249,20 +249,20 @@ class DataIterator:
                 if v != value or v == 0:
                     segment_tag.append(v)
                     segment_length.append(index - i)
-                    segment_position.append(index)
+                    segment_position.append(index - 1)
                     v = value
                     i = index
                 else:
                     if index - i >= self._max_segment_length:
                         segment_tag.append(v)
                         segment_length.append(index - i)
-                        segment_position.append(index)
+                        segment_position.append(index - 1)
                         v = value
                         i = index
 
         segment_tag.append(v)
         segment_length.append(len(ground_truth) - i)
-        segment_position.append(len(ground_truth))
+        segment_position.append(len(ground_truth) - 1)
         segmentation_length = len(segment_tag)
         segment_tag += [self.PAD_ID] * (self._max_question_length - len(segment_tag))
         segment_length += [1] * (self._max_question_length - len(segment_length))
@@ -614,18 +614,24 @@ if __name__ == "__main__":
         questions_file="..\\..\\tf_data\\test\\questions.txt",
         max_question_length=22,
         max_word_length=22,
-        max_segment_length=5,
-        batch_size=2
+        max_segment_length=1,
+        batch_size=1
     )
-    data_iterator.save_batches("test_batch")
 
-    data_iterator = DataIterator(
-        tables_file="..\\..\\tf_data\\training\\tables.txt",
-        questions_file="..\\..\\tf_data\\training\\questions.txt",
-        max_question_length=22,
-        max_word_length=22,
-        max_segment_length=5,
-        batch_size=2
-    )
-    data_iterator.save_batches("training_batch")
+    batch = data_iterator.get_batch()
+    batch._print()
+    # data_iterator.shuffle()
+    # batch._print()
+    # data_iterator.save_batches("test_batch")
+
+    #
+    # data_iterator = DataIterator(
+    #     tables_file="..\\..\\tf_data\\training\\tables.txt",
+    #     questions_file="..\\..\\tf_data\\training\\questions.txt",
+    #     max_question_length=22,
+    #     max_word_length=22,
+    #     max_segment_length=1,
+    #     batch_size=2
+    # )
+    # data_iterator.save_batches("training_batch")
 
