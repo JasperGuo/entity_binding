@@ -32,7 +32,7 @@ minimum_learning_rate: 0.00001
 log_dir: log
 max_question_length: 22
 max_word_length: 22
-max_segment_length: 1
+max_segment_length: 2
 name: EntityBinding
 question_rnn_encoder_hidden_dim: 100
 question_rnn_encoder_layer: 1

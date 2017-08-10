@@ -237,6 +237,7 @@ class DataIterator:
         return reindexed
 
     def _grounp_by_segment(self, ground_truth):
+        print("Validation: ", ground_truth)
         segment_length = list()
         segment_tag = list()
         segment_position = list()
@@ -614,24 +615,23 @@ if __name__ == "__main__":
         questions_file="..\\..\\tf_data\\test\\questions.txt",
         max_question_length=22,
         max_word_length=22,
-        max_segment_length=1,
-        batch_size=1
+        max_segment_length=2,
+        batch_size=2
     )
-
-    batch = data_iterator.get_batch()
-    batch._print()
-    # data_iterator.shuffle()
-    # batch._print()
-    # data_iterator.save_batches("test_batch")
-
     #
-    # data_iterator = DataIterator(
-    #     tables_file="..\\..\\tf_data\\training\\tables.txt",
-    #     questions_file="..\\..\\tf_data\\training\\questions.txt",
-    #     max_question_length=22,
-    #     max_word_length=22,
-    #     max_segment_length=1,
-    #     batch_size=2
-    # )
-    # data_iterator.save_batches("training_batch")
+    # batch = data_iterator.get_batch()
+    # batch._print()
+    data_iterator.shuffle()
+    data_iterator.save_batches("test_batch")
+
+    data_iterator = DataIterator(
+        tables_file="..\\..\\tf_data\\training\\tables.txt",
+        questions_file="..\\..\\tf_data\\training\\questions.txt",
+        max_question_length=22,
+        max_word_length=22,
+        max_segment_length=2,
+        batch_size=2
+    )
+    data_iterator.shuffle()
+    data_iterator.save_batches("training_batch")
 

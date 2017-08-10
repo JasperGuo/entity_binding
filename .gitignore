@@ -1,6 +1,20 @@
 WikiTable/*
 CoNLL_2000_chunking/*
 NLLD_parse_table/*
+learning_models/*/result_log/*
+learning_models/*/checkpoint/*
+learning_models/*/log/*
+learning_models/*/analysis/*
+learning_models/*/test_batch
+learning_models/*/training_batch
+learning_models/*/analysis/*
+learning_models/*/analyze/*
+.idea/*
+.vscode/*
+*.pyc
+data/*.txt
+tf_data/vocab/glove.6B*
+tf_data/vocab/word_embedding.npy
 
 !WikiTable/parse_question.py
 !WikiTable/parse_table.py
