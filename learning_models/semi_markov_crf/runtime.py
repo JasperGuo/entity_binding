@@ -149,26 +149,24 @@ class ModelRuntime:
             _mask = np.less(np.arange(self._config["max_question_length"]), _question_length)
 
             # print(_mask, _mask.shape)
-            # print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
-            # print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
-            # print("==========================")
+            print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
+            print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
+            print("==========================")
 
-            _predictions_list = np.array(_predictions_list) * _mask
-            _ground_truth_list += np.array(_ground_truth_list) * _mask
+            _predictions_list = np.array(_predictions_list) * _mask if len(_predictions_list) == len(_mask) else _predictions_list
+            _ground_truth_list = np.array(_ground_truth_list) * _mask
 
             predictions.append(_predictions_list)
             truths.append(_ground_truth_list)
 
         p = np.array(predictions)
         g = np.array(truths)
-        result = np.sum(np.abs(p - g), axis=-1)
         correct = 0
-        for idx, r in enumerate(result):
-            if r == 0:
+
+        for _p, _t in zip(p, g):
+            if len(_p) == len(_t) and np.sum(np.abs(_p - _t)) == 0:
                 correct += 1
-                # tqdm.write(str(p[r]))
-                # tqdm.write(str(g[r]))
-                # tqdm.write("======================================")
+
         return correct
 
     def log(self, file, batch, tag_predictions, segment_length_predictions):

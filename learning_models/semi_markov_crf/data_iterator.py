@@ -264,10 +264,10 @@ class DataIterator:
         segment_tag.append(v)
         segment_length.append(len(ground_truth) - i)
         segment_position.append(len(ground_truth) - 1)
-        segmentation_length = len(segment_tag)
+        segmentation_length = len(segment_tag) + self._max_question_length - segment_position[-1] - 1
         segment_tag += [self.PAD_ID] * (self._max_question_length - len(segment_tag))
         segment_length += [1] * (self._max_question_length - len(segment_length))
-        segment_position += [0] * (self._max_question_length - len(segment_position))
+        segment_position += ([segment_position[-1] + 1 + i for i in range(self._max_question_length - segment_position[-1] - 1)] + [0] * (self._max_question_length - segmentation_length))
         return segmentation_length, segment_tag, segment_length, segment_position
 
     def _construct_exact_match_matrix(self, exact_match, table, max_column_num, max_cell_value_num_per_col):
@@ -619,11 +619,12 @@ if __name__ == "__main__":
         batch_size=2
     )
     #
+    # data_iterator.shuffle()
     # batch = data_iterator.get_batch()
     # batch._print()
     data_iterator.shuffle()
-    data_iterator.save_batches("test_batch")
-
+    data_iterator.save_batches("2_pos_test_batch")
+    #
     data_iterator = DataIterator(
         tables_file="..\\..\\tf_data\\training\\tables.txt",
         questions_file="..\\..\\tf_data\\training\\questions.txt",
@@ -633,5 +634,5 @@ if __name__ == "__main__":
         batch_size=2
     )
     data_iterator.shuffle()
-    data_iterator.save_batches("training_batch")
+    data_iterator.save_batches("2_pos_training_batch")
 

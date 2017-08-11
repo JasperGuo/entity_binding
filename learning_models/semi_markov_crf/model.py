@@ -954,10 +954,11 @@ class Model:
     def _calc_ground_truth_tag_scores(self, tag_scores):
         """
         Calculate Ground truth tag scores
-        :param tag_scores: [batch_size, max_question_length, max_segment_length, table_size + 1]
+        :param tag_scores:      [batch_size, max_question_length, max_segment_length, table_size + 1]
         :return:
             [batch_size, max_question_length]
         """
+
         with tf.name_scope("calc_ground_truth_index"):
             prefix_1 = tf.tile(
                 tf.expand_dims(
@@ -1067,10 +1068,10 @@ class Model:
 
             _transposed_transition_scores = tf.transpose(transition_scores, perm=[0, 2, 1])
 
-            def __cond_1(_curr_seg_length, _masks, _history, _curr_all_seg_tag_scores, _result):
+            def __cond_1(_curr_seg_length, _history, _curr_all_seg_tag_scores, _result):
                 return tf.less(_curr_seg_length, self._max_segment_length)
 
-            def __loop_body_1(_curr_seg_length, _masks, _history, _curr_all_seg_tag_scores, _result):
+            def __loop_body_1(_curr_seg_length, _history, _curr_all_seg_tag_scores, _result):
                 __curr_seg = tf.reshape(
                     tf.slice(_history, begin=[_curr_seg_length, 0, 0], size=[1, self._batch_size, self._table_size + 1]),
                     shape=[self._batch_size, self._table_size + 1]
@@ -1080,14 +1081,14 @@ class Model:
                     shape=[self._batch_size, self._table_size + 1]
                 )
 
-                _masked_transition_scores = tf.multiply(_transposed_transition_scores, _masks)
+                # _masked_transition_scores = tf.multiply(_transposed_transition_scores, _masks)
 
                 # Shape: [batch_size, table_size]
                 temp = tf.reduce_logsumexp(
                     tf.add(
                         tf.add(
                             tf.expand_dims(__curr_seg, axis=1),
-                            _masked_transition_scores
+                            _transposed_transition_scores
                         ),
                         tf.expand_dims(__curr_tag, axis=2)
                     ),
@@ -1111,7 +1112,7 @@ class Model:
 
                 _next_seg_length = tf.add(_curr_seg_length, 1)
 
-                return _next_seg_length, _masks,  _history, _curr_all_seg_tag_scores, _result
+                return _next_seg_length,  _history, _curr_all_seg_tag_scores, _result
 
             def __cond(_curr_ts, _history):
                 return tf.less(_curr_ts, self._max_question_length)
@@ -1132,29 +1133,29 @@ class Model:
                 )
 
                 # Shape: [batch_size, table_size + 1, 1]
-                _curr_masks = tf.reshape(
-                    tf.tile(
-                        tf.expand_dims(
-                            tf.cast(
-                                tf.less(
-                                    tf.tile(tf.expand_dims(_curr_ts, axis=0), multiples=[self._batch_size]),
-                                    self._questions_length
-                                ),
-                                dtype=tf.float32
-                            ),
-                            axis=1
-                        ),
-                        multiples=[1, self._table_size + 1]
-                    ),
-                    shape=[self._batch_size, self._table_size + 1, 1]
-                )
+                # _curr_masks = tf.reshape(
+                #     tf.tile(
+                #         tf.expand_dims(
+                #             tf.cast(
+                #                 tf.less(
+                #                     tf.tile(tf.expand_dims(_curr_ts, axis=0), multiples=[self._batch_size]),
+                #                     self._questions_length
+                #                 ),
+                #                 dtype=tf.float32
+                #             ),
+                #             axis=1
+                #         ),
+                #         multiples=[1, self._table_size + 1]
+                #     ),
+                #     shape=[self._batch_size, self._table_size + 1, 1]
+                # )
 
-                _, _, _, _, __scores_1 = tf.while_loop(
+                _, _, _, __scores_1 = tf.while_loop(
                     cond=__cond_1,
                     body=__loop_body_1,
                     loop_vars=[
                         tf.constant(0),
-                        _curr_masks,
+                        # _curr_masks,
                         tf.transpose(_history, perm=[1, 0, 2]),
                         tf.transpose(curr_tag_scores, perm=[1, 0, 2]),
                         tf.zeros([self._max_segment_length, self._batch_size, self._table_size + 1], dtype=tf.float32)
@@ -1245,14 +1246,13 @@ class Model:
                 multiples=[self._batch_size, 1]
             )
 
-            def __cond_2(_curr_seg_length, _mask, _history, _curr_all_seg_tag_scores, _segment_max_scores, _segment_max_scores_index):
+            def __cond_2(_curr_seg_length, _history, _curr_all_seg_tag_scores, _segment_max_scores, _segment_max_scores_index):
                 return tf.less(_curr_seg_length, self._max_segment_length)
 
-            def __loop_body_2(_curr_seg_length, _mask, _history, _curr_all_seg_tag_scores, _segment_max_scores, _segment_max_scores_index):
+            def __loop_body_2(_curr_seg_length, _history, _curr_all_seg_tag_scores, _segment_max_scores, _segment_max_scores_index):
                 """
                 Run each segment
                 :param _curr_seg_length:            Scalar
-                :param _mask:                       [batch_size, table_size + 1, 1]
                 :param _history:                    [max_segment_length, batch_size, table_size + 1]
                 :param _curr_all_seg_tag_scores:    [max_segment_length, batch_size, table_size + 1]
                 :param _segment_max_scores:         [max_segment_length, batch_size, table_size + 1]
@@ -1268,13 +1268,13 @@ class Model:
                     shape=[self._batch_size, self._table_size + 1]
                 )
 
-                _masked_transposed_transition_scores = tf.multiply(_mask, _transposed_transition_scores)
+                # _masked_transposed_transition_scores = tf.multiply(_mask, _transposed_transition_scores)
 
                 # Shape: [batch_size, table_size + 1, table_size + 1]
                 __curr_segment_scores = tf.add(
                     tf.add(
                         tf.expand_dims(__curr_seg, axis=1),
-                        _masked_transposed_transition_scores
+                        _transposed_transition_scores
                     ),
                     tf.expand_dims(__curr_tag, axis=2)
                 )
@@ -1315,7 +1315,7 @@ class Model:
 
                 _next_seg_length = tf.add(_curr_seg_length, 1)
 
-                return _next_seg_length, _mask, _history, _curr_all_seg_tag_scores, _segment_max_scores, _segment_max_scores_index
+                return _next_seg_length, _history, _curr_all_seg_tag_scores, _segment_max_scores, _segment_max_scores_index
 
             def __cond(_curr_ts, _scores, _tag_index_array, _segment_length_array):
                 return tf.less(_curr_ts, self._max_question_length)
@@ -1339,30 +1339,30 @@ class Model:
                 )
 
                 # Shape: [batch_size, table_size + 1, 1]
-                _curr_masks = tf.reshape(
-                    tf.tile(
-                        tf.expand_dims(
-                            tf.cast(
-                                tf.less(
-                                    tf.tile(tf.expand_dims(_curr_ts, axis=0), multiples=[self._batch_size]),
-                                    self._questions_length
-                                ),
-                                dtype=tf.float32
-                            ),
-                            axis=1
-                        ),
-                        multiples=[1, self._table_size + 1]
-                    ),
-                    shape=[self._batch_size, self._table_size + 1, 1]
-                )
+                # _curr_masks = tf.reshape(
+                #     tf.tile(
+                #         tf.expand_dims(
+                #             tf.cast(
+                #                 tf.less(
+                #                     tf.tile(tf.expand_dims(_curr_ts, axis=0), multiples=[self._batch_size]),
+                #                     self._questions_length
+                #                 ),
+                #                 dtype=tf.float32
+                #             ),
+                #             axis=1
+                #         ),
+                #         multiples=[1, self._table_size + 1]
+                #     ),
+                #     shape=[self._batch_size, self._table_size + 1, 1]
+                # )
 
                 # Shape: [max_segment_length, batch_size, table_size + 1]
-                _, _, _, _, _segments_max_scores, _segments_max_scores_index = tf.while_loop(
+                _, _, _, _segments_max_scores, _segments_max_scores_index = tf.while_loop(
                     cond=__cond_2,
                     body=__loop_body_2,
                     loop_vars=[
                         tf.constant(0),
-                        _curr_masks,
+                        # _curr_masks,
                         tf.transpose(_history, perm=[1, 0, 2]),
                         tf.transpose(__curr_tag_scores, perm=[1, 0, 2]),
                         tf.zeros([self._max_segment_length, self._batch_size, self._table_size + 1], dtype=tf.float32),
@@ -1431,7 +1431,6 @@ class Model:
                 axis=1
             )
 
-            # scores: Shape: [batch_size, max_segment_length, table_size + 1]
             total_ts, history, tag_index_array, segment_length_array = tf.while_loop(
                 cond=__cond,
                 body=__loop_body,
@@ -1542,7 +1541,7 @@ class Model:
                 )
 
                 # Check if finished
-                _mask = tf.cast(tf.less_equal(_next_position, 0), dtype=tf.int32)
+                _mask = tf.cast(tf.less(_next_position, 0), dtype=tf.int32)
 
                 _next_position = tf.multiply(_next_position, 1 - _mask)
                 _next_tag_index = tf.multiply(_next_tag_index, 1 - _mask)
@@ -1744,7 +1743,7 @@ class Model:
             transition_scores=self._transition_score
         )
 
-        total_scores = tf.Print(total_scores, [ground_truth_scores, total_scores], message="Scores: ")
+        # total_scores = tf.Print(total_scores, [ground_truth_scores, total_scores], message="Scores: ")
 
         self._loss = tf.negative(tf.reduce_mean(ground_truth_scores - total_scores))
 
