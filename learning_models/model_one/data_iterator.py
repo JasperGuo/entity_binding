@@ -551,11 +551,13 @@ class BatchIterator:
 
 if __name__ == "__main__":
     data_iterator = DataIterator(
-        "..\\..\\tf_data\\test\\tables.txt",
-        "..\\..\\tf_data\\test\\questions.txt",
+        "..\\..\\tf_data\\training\\tables.txt",
+        "..\\..\\tf_data\\training\\questions.txt",
         22,
         22,
-        20
+        1
     )
-    data_iterator.save_batches("test_batch")
+    batch = data_iterator.get_batch()
+    batch._print()
+    # data_iterator.save_batches("training_batch")
 
