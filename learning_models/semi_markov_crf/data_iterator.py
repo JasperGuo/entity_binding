@@ -72,6 +72,7 @@ class Batch:
         self.word_character_matrix = kwargs["word_character_matrix"]
         self.word_character_length = kwargs["word_character_length"]
         self.ground_truth = kwargs["ground_truth"]
+        self.ground_truth_actual_segmentation_length = kwargs["ground_truth_actual_segmentation_length"]
         self.ground_truth_segmentation_length = kwargs["ground_truth_segmentation_length"]
         self.ground_truth_segment_length = kwargs["ground_truth_segment_length"]
         self.ground_truth_segment_position = kwargs["ground_truth_segment_position"]
@@ -264,11 +265,12 @@ class DataIterator:
         segment_tag.append(v)
         segment_length.append(len(ground_truth) - i)
         segment_position.append(len(ground_truth) - 1)
+        actual_segmentation_length = len(segment_tag)
         segmentation_length = len(segment_tag) + self._max_question_length - segment_position[-1] - 1
         segment_tag += [self.PAD_ID] * (self._max_question_length - len(segment_tag))
         segment_length += [1] * (self._max_question_length - len(segment_length))
         segment_position += ([segment_position[-1] + 1 + i for i in range(self._max_question_length - segment_position[-1] - 1)] + [0] * (self._max_question_length - segmentation_length))
-        return segmentation_length, segment_tag, segment_length, segment_position
+        return actual_segmentation_length, segmentation_length, segment_tag, segment_length, segment_position
 
     def _construct_exact_match_matrix(self, exact_match, table, max_column_num, max_cell_value_num_per_col):
         """
@@ -365,6 +367,7 @@ class DataIterator:
 
         # Ground truth segmentation length
         # Shape: [batch_size]
+        ground_truth_actual_segmentation_length = list()
         ground_truth_segmentation_length = list()
 
         # Exact match matrix
@@ -378,10 +381,11 @@ class DataIterator:
                 max_cell_value_num_per_col=max_cell_value_num_per_col
             )
 
-            segmentation_length, seg_tag, seg_length, seg_pos = self._grounp_by_segment(
+            actual_segmentation_length, segmentation_length, seg_tag, seg_length, seg_pos = self._grounp_by_segment(
                 # reindexed_ground_truth + [self.PAD_ID] * (self._max_question_length - len(q["ground_truth"]))
                 reindexed_ground_truth
             )
+            ground_truth_actual_segmentation_length.append(actual_segmentation_length)
             ground_truth_segmentation_length.append(segmentation_length)
             ground_truth.append(seg_tag)
             ground_truth_segment_length.append(seg_length)
@@ -541,6 +545,7 @@ class DataIterator:
             questions_word_ids=questions_word_ids,
             questions_char_ids=questions_char_ids,
             ground_truth=ground_truth,
+            ground_truth_actual_segmentation_length=ground_truth_actual_segmentation_length,
             ground_truth_segmentation_length=ground_truth_segmentation_length,
             ground_truth_segment_length=ground_truth_segment_length,
             ground_truth_segment_position=ground_truth_segment_position,
@@ -615,7 +620,7 @@ if __name__ == "__main__":
         questions_file="..\\..\\tf_data\\test\\questions.txt",
         max_question_length=22,
         max_word_length=22,
-        max_segment_length=2,
+        max_segment_length=3,
         batch_size=2
     )
     #
@@ -623,15 +628,15 @@ if __name__ == "__main__":
     # batch = data_iterator.get_batch()
     # batch._print()
     data_iterator.shuffle()
-    data_iterator.save_batches("2_pos_test_batch")
+    data_iterator.save_batches("3_pos_with_actual_seg_length_test_batch")
     #
     data_iterator = DataIterator(
         tables_file="..\\..\\tf_data\\training\\tables.txt",
         questions_file="..\\..\\tf_data\\training\\questions.txt",
         max_question_length=22,
         max_word_length=22,
-        max_segment_length=2,
+        max_segment_length=3,
         batch_size=2
     )
     data_iterator.shuffle()
-    data_iterator.save_batches("2_pos_training_batch")
+    data_iterator.save_batches("3_pos_with_actual_seg_length_training_batch")

@@ -184,6 +184,11 @@ class Model:
                 [self._batch_size, self._max_question_length],
                 name="ground_truth"
             )
+            self._ground_truth_actual_segmentation_length = tf.placeholder(
+                tf.int32,
+                [self._batch_size],
+                name="ground_truth_actual_segmentation_length"
+            )
             self._ground_truth_segmentation_length = tf.placeholder(
                 tf.int32,
                 [self._batch_size],
@@ -986,7 +991,7 @@ class Model:
                         tf.expand_dims(tf.range(self._max_question_length), axis=0),
                         multiples=[self._batch_size, 1]
                     ),
-                    tf.reshape(self._ground_truth_segmentation_length, shape=[self._batch_size, 1])
+                    tf.reshape(self._ground_truth_actual_segmentation_length, shape=[self._batch_size, 1])
                 ),
                 dtype=tf.float32
             )
@@ -1776,6 +1781,7 @@ class Model:
         feed_dict[self._cell_value_word_ids] = batch.column_word_ids
         feed_dict[self._cell_value_char_ids] = batch.column_char_ids
         feed_dict[self._ground_truth] = batch.ground_truth
+        feed_dict[self._ground_truth_actual_segmentation_length] = batch.ground_truth_actual_segmentation_length
         feed_dict[self._ground_truth_segmentation_length] = batch.ground_truth_segmentation_length
         feed_dict[self._ground_truth_segment_length] = batch.ground_truth_segment_length
         feed_dict[self._ground_truth_segment_position] = batch.ground_truth_segment_position
