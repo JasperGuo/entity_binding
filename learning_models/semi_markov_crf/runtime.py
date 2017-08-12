@@ -26,7 +26,6 @@ def save_configuration(config, path):
 
 
 class ModelRuntime:
-
     def __init__(self, configuration):
         self._base_path = os.path.dirname(os.path.abspath(os.path.pardir))
         self._config = read_configuration(configuration)
@@ -104,6 +103,54 @@ class ModelRuntime:
                 self._saver.restore(self._session, checkpoint)
             self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
 
+    def _process_predictions(self, tag_predictions,
+                             segment_length_predictions,
+                             ground_truth,
+                             ground_truth_segment_length,
+                             ground_truth_segmentation_length,
+                             question_length):
+        predictions = list()
+        truths = list()
+        for i in range(len(tag_predictions)):
+            _predicted_tags = tag_predictions[i]
+            _predicted_segment_length = segment_length_predictions[i]
+            _ground_truth = ground_truth[i]
+            _ground_truth_segment_length = ground_truth_segment_length[i]
+
+            _predictions_list = list()
+            _ground_truth_list = list()
+
+            _question_length = question_length[i]
+            _ground_truth_segmentation_length = ground_truth_segmentation_length[i]
+
+            _mask = np.less(np.arange(self._config["max_question_length"]), _ground_truth_segmentation_length)
+            _ground_truth_segment_length = np.array(_ground_truth_segment_length) * _mask
+
+            for pt, ps, gt, gs in zip(_predicted_tags, _predicted_segment_length, _ground_truth,
+                                      _ground_truth_segment_length):
+                for j in range(ps):
+                    _predictions_list.append(pt)
+                for j in range(gs):
+                    _ground_truth_list.append(gt)
+
+            _predictions_list += [0] * (self._config["max_question_length"] - len(_predictions_list))
+            _ground_truth_list += [0] * (self._config["max_question_length"] - len(_ground_truth_list))
+
+            _mask = np.less(np.arange(self._config["max_question_length"]), _question_length)
+
+            # print(_mask, _mask.shape)
+            print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
+            print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
+            print("==========================")
+
+            _predictions_list = np.array(_predictions_list) * _mask if len(_predictions_list) == len(
+                _mask) else _predictions_list
+            _ground_truth_list = np.array(_ground_truth_list) * _mask
+
+            predictions.append(_predictions_list)
+            truths.append(_ground_truth_list)
+        return np.array(predictions), np.array(truths)
+
     def _check_predictions(self,
                            tag_predictions,
                            segment_length_predictions,
@@ -120,47 +167,16 @@ class ModelRuntime:
         :param question_length:             [batch_size]
         :return:
         """
-        predictions = list()
-        truths = list()
-        for i in range(self._batch_size):
-            _predicted_tags = tag_predictions[i]
-            _predicted_segment_length = segment_length_predictions[i]
-            _ground_truth = ground_truth[i]
-            _ground_truth_segment_length = ground_truth_segment_length[i]
 
-            _predictions_list = list()
-            _ground_truth_list = list()
+        p, g = self._process_predictions(
+            tag_predictions,
+            segment_length_predictions,
+            ground_truth,
+            ground_truth_segment_length,
+            ground_truth_segmentation_length,
+            question_length
+        )
 
-            _question_length = question_length[i]
-            _ground_truth_segmentation_length = ground_truth_segmentation_length[i]
-
-            _mask = np.less(np.arange(self._config["max_question_length"]), _ground_truth_segmentation_length)
-            _ground_truth_segment_length = np.array(_ground_truth_segment_length) * _mask
-
-            for pt, ps, gt, gs in zip(_predicted_tags, _predicted_segment_length, _ground_truth, _ground_truth_segment_length):
-                for j in range(ps):
-                    _predictions_list.append(pt)
-                for j in range(gs):
-                    _ground_truth_list.append(gt)
-
-            _predictions_list += [0] * (self._config["max_question_length"] - len(_predictions_list))
-            _ground_truth_list += [0] * (self._config["max_question_length"] - len(_ground_truth_list))
-
-            _mask = np.less(np.arange(self._config["max_question_length"]), _question_length)
-
-            # print(_mask, _mask.shape)
-            print(np.array(_predictions_list), np.array(_predictions_list).shape, _predicted_segment_length)
-            print(np.array(_ground_truth_list), np.array(_ground_truth_list).shape)
-            print("==========================")
-
-            _predictions_list = np.array(_predictions_list) * _mask if len(_predictions_list) == len(_mask) else _predictions_list
-            _ground_truth_list = np.array(_ground_truth_list) * _mask
-
-            predictions.append(_predictions_list)
-            truths.append(_ground_truth_list)
-
-        p = np.array(predictions)
-        g = np.array(truths)
         correct = 0
 
         for _p, _t in zip(p, g):
@@ -170,25 +186,39 @@ class ModelRuntime:
         return correct
 
     def log(self, file, batch, tag_predictions, segment_length_predictions):
+
+        unfold_predictions, unfold_ground_truth = self._process_predictions(
+            tag_predictions=tag_predictions,
+            segment_length_predictions=segment_length_predictions,
+            ground_truth=batch.ground_truth,
+            ground_truth_segmentation_length=batch.ground_truth_segmentation_length,
+            ground_truth_segment_length=batch.ground_truth_segment_length,
+            question_length=batch.questions_length
+        )
+
         with open(file, "a") as f:
             string = ""
-            for tt, ts, pt, ps, qid, cv, table_id in zip(
+            for tt, ts, pt, ps, qid, cv, table_id, unfold_p, unfold_t in zip(
                     batch.ground_truth,
                     batch.ground_truth_segment_length,
                     tag_predictions,
                     segment_length_predictions,
                     batch.questions_ids,
                     batch.cell_value_length,
-                    batch.table_map_ids
+                    batch.table_map_ids,
+                    unfold_predictions,
+                    unfold_ground_truth
             ):
-                result = np.sum(np.abs(np.array(p) - np.array(t)), axis=-1)
+                result = np.sum(np.abs(np.array(unfold_p) - np.array(unfold_t)), axis=-1)
                 string += "=======================\n"
                 string += ("id: " + str(qid) + "\n")
                 string += ("tid: " + str(table_id) + "\n")
                 string += ("max_column: " + str(len(cv)) + "\n")
                 string += ("max_cell_value_per_col: " + str(len(cv[0])) + "\n")
-                string += ("tt: " + (', '.join([str(i) for i in tt])) + "\n")
+                string += ("unfold_t: " + (', '.join([str(i) for i in unfold_t])) + "\n")
+                string += ("unfold_p: " + (', '.join([str(i) for i in unfold_p])) + "\n")
                 string += ("ts: " + (', '.join([str(i) for i in ts])) + "\n")
+                string += ("tt: " + (', '.join([str(i) for i in tt])) + "\n")
                 string += ("pt: " + (', '.join([str(i) for i in pt])) + "\n")
                 string += ("ps: " + (', '.join([str(i) for i in ps])) + "\n")
                 string += ("Result: " + str(result == 0) + "\n")
@@ -206,7 +236,8 @@ class ModelRuntime:
         :return:
         """
         with open(file, "a") as f:
-            f.write("epoch: %d, train_accuracy: %f, dev_accuracy: %f, average_loss: %f\n" % (num_epoch, train_accuracy, dev_accuracy, average_loss))
+            f.write("epoch: %d, train_accuracy: %f, dev_accuracy: %f, average_loss: %f\n" % (
+            num_epoch, train_accuracy, dev_accuracy, average_loss))
 
     def test(self, data_iterator, is_log=False):
         tqdm.write("Testing...")
@@ -240,7 +271,7 @@ class ModelRuntime:
                     segment_length_predictions=segment_length_predictions
                 )
 
-        accuracy = float(correct)/float(total)
+        accuracy = float(correct) / float(total)
         tqdm.write("test_acc: %f" % accuracy)
         return accuracy
 
@@ -260,7 +291,8 @@ class ModelRuntime:
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
                     batch.learning_rate = curr_learning
-                    tag_predictions, segment_length_predictions, loss, optimizer, feed_dict = self._train_model.train(batch)
+                    tag_predictions, segment_length_predictions, loss, optimizer, feed_dict = self._train_model.train(
+                        batch)
                     tag_predictions, segment_length_predictions, loss, optimizer = self._session.run(
                         (tag_predictions, segment_length_predictions, loss, optimizer),
                         feed_dict=feed_dict
@@ -281,7 +313,8 @@ class ModelRuntime:
                 dev_accuracy = self.test(self._dev_data_iterator, is_log=False)
 
                 average_loss = np.average(np.array(losses))
-                tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f, learning_rate: %f" % (epoch, average_loss, train_acc, dev_accuracy, curr_learning))
+                tqdm.write("epoch: %d, loss: %f, train_acc: %f, dev_acc: %f, learning_rate: %f" % (
+                epoch, average_loss, train_acc, dev_accuracy, curr_learning))
 
                 if dev_accuracy > best_accuracy:
                     best_accuracy = dev_accuracy
@@ -347,4 +380,3 @@ if __name__ == "__main__":
     runtime = ModelRuntime(args.conf)
     runtime.init_session(args.checkpoint)
     runtime.run(args.is_test, args.is_log)
-

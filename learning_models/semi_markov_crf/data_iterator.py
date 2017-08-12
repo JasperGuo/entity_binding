@@ -635,4 +635,3 @@ if __name__ == "__main__":
     )
     data_iterator.shuffle()
     data_iterator.save_batches("2_pos_training_batch")
-

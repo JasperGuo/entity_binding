@@ -240,7 +240,7 @@ class ModelRuntime:
     def run(self, is_test=False, is_log=False):
         if is_test:
             self._test_data_iterator = BatchIterator(
-                serialized_file=self._config["training"]["batches"]
+                serialized_file=self._config["test"]["batches"]
             )
             self.test(self._test_data_iterator, True)
         else:
