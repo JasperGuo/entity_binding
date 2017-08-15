@@ -1750,6 +1750,10 @@ class Model:
 
         # total_scores = tf.Print(total_scores, [ground_truth_scores, total_scores], message="Scores: ")
 
+        # vars = tf.trainable_variables()
+        # l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in vars
+        #                     if 'bias' not in v.name]) * 0.001
+        #
         self._loss = tf.negative(tf.reduce_mean(ground_truth_scores - total_scores))
 
         with tf.name_scope("back_propagation"):
