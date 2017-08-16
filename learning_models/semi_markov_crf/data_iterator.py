@@ -620,7 +620,7 @@ if __name__ == "__main__":
         questions_file="..\\..\\tf_data\\test\\questions.txt",
         max_question_length=22,
         max_word_length=22,
-        max_segment_length=3,
+        max_segment_length=1,
         batch_size=2
     )
     #
@@ -628,15 +628,15 @@ if __name__ == "__main__":
     # batch = data_iterator.get_batch()
     # batch._print()
     data_iterator.shuffle()
-    data_iterator.save_batches("3_pos_with_actual_seg_length_test_batch")
+    data_iterator.save_batches("1_pos_with_actual_seg_length_test_batch")
     #
     data_iterator = DataIterator(
         tables_file="..\\..\\tf_data\\training\\tables.txt",
         questions_file="..\\..\\tf_data\\training\\questions.txt",
         max_question_length=22,
         max_word_length=22,
-        max_segment_length=3,
+        max_segment_length=1,
         batch_size=2
     )
     data_iterator.shuffle()
-    data_iterator.save_batches("3_pos_with_actual_seg_length_training_batch")
+    data_iterator.save_batches("1_pos_with_actual_seg_length_training_batch")

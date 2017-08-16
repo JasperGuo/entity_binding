@@ -56,7 +56,8 @@ class Model:
         self._question_rnn_encoder_hidden_dim = opts["question_rnn_encoder_hidden_dim"]
         self._question_rnn_encoder_layer = opts["question_rnn_encoder_layer"]
         self._combined_embedding_dim = opts["combined_embedding_dim"]
-        # self._transition_score_weight_dim = opts["transition_score_weight_dim"]
+        self._scoring_weight_dim = opts["scoring_weight_dim"]
+        self._exact_match_embedding_dim = opts["exact_match_embedding_dim"]
 
         self._highway_transform_layer_1_dim = opts["highway_transform_layer_1_dim"]
         self._highway_transform_layer_2_dim = opts["highway_transform_layer_2_dim"]
@@ -915,7 +916,7 @@ class Model:
     def _calc_scores(self, table_representation, segment_representation):
         """
         :param table_representation:    [batch_size, table_size, table_extra_transform_dim]
-        :param segment_representation:  [batch_size, max_segment_length, max_question_length, highway_tranform_layer_2_dim]
+        :param segment_representation:  [batch_size, max_segment_length, max_question_length, highway_transform_layer_2_dim]
         :return:
             [batch_size, max_segment_length, max_question_length, table_size]
         """
@@ -941,20 +942,57 @@ class Model:
             shape=[self._batch_size, self._max_segment_length*self._max_question_length*self._table_size, self._highway_transform_layer_2_dim]
         )
 
-        with tf.name_scope("scoring"):
-            # Shape: [batch_size, max_segment_length, max_question_length, table_size]
-            scores = tf.reshape(
-                tf.reduce_sum(
-                    tf.multiply(
-                        expanded_question_representation,
-                        expanded_table_representation
-                    ),
-                    axis=-1
-                ),
-                shape=[self._batch_size, self._max_segment_length, self._max_question_length, self._table_size]
-            )
+        flattened_table_representation = tf.reshape(expanded_table_representation, shape=[-1, self._table_extra_transform_dim])
+        flattened_question_representation = tf.reshape(expanded_question_representation, shape=[-1, self._highway_transform_layer_2_dim])
 
-            return scores
+        with tf.name_scope("scoring"):
+
+            with tf.variable_scope("scoring_weights"):
+                w_x = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[self._table_extra_transform_dim, self._scoring_weight_dim],
+                    name="table_weight"
+                )
+                w_s = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[self._highway_transform_layer_2_dim, self._scoring_weight_dim],
+                    name="question_weight"
+                )
+                bias = tf.get_variable(
+                    initializer=tf.zeros_initializer(),
+                    shape=[1, self._scoring_weight_dim],
+                    name="bias"
+                )
+                v = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[self._scoring_weight_dim, 1],
+                    name="v"
+                )
+
+            h_x = tf.multiply(x=flattened_table_representation, y=flattened_question_representation)
+            h_s = tf.abs(tf.subtract(x=flattened_table_representation, y=flattened_question_representation))
+
+        return tf.reshape(
+            tf.matmul(
+                tf.nn.relu(
+                    tf.add(
+                        tf.matmul(
+                            a=tf.concat(
+                                values=[
+                                    h_x,
+                                    h_s,
+                                ],
+                                axis=-1
+                            ),
+                            b=tf.concat(values=[w_x, w_s], axis=0)
+                        ),
+                        bias
+                    ),
+                ),
+                v
+            ),
+            shape=[self._batch_size, self._max_segment_length, self._max_question_length, self._table_size]
+        )
 
     def _calc_ground_truth_tag_scores(self, tag_scores):
         """

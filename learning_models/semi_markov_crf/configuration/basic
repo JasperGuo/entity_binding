@@ -18,6 +18,7 @@ dev:
   - test
   - tables.txt
 dropout: 0.5
+exact_match_embedding_dim: 50
 embedding:
   word:
   - tf_data
@@ -37,6 +38,7 @@ name: EntityBinding
 question_rnn_encoder_hidden_dim: 100
 question_rnn_encoder_layer: 1
 result_log: result_log
+scoring_weight_dim: 50
 table_name_and_column_name_transform_dim: 100
 transition_score_weight_dim: 50
 test:
