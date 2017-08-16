@@ -1029,13 +1029,13 @@ class Model:
                         tf.expand_dims(tf.range(self._max_question_length), axis=0),
                         multiples=[self._batch_size, 1]
                     ),
-                    tf.reshape(self._ground_truth_actual_segmentation_length, shape=[self._batch_size, 1])
+                    tf.reshape(self._ground_truth_segmentation_length, shape=[self._batch_size, 1])
                 ),
                 dtype=tf.float32
             )
         )
 
-        return scores
+        return tf.gather_nd(tag_scores, index)
 
     def _calc_ground_truth_transition_scores(self, transition_scores):
         """
