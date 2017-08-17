@@ -210,7 +210,7 @@ class Model:
             # None: size of table
             self._exact_match_matrix = tf.placeholder(
                 tf.float32,
-                [self._batch_size, self._max_question_length, None],
+                [self._batch_size, self._max_segment_length, self._max_question_length, None],
                 name="exact_match_matrix"
             )
 
@@ -289,7 +289,16 @@ class Model:
                 name="special_transition_tag_embedding"
             )
 
-        return word_embedding, char_embedding, column_data_type_embedding, special_tag_embedding, special_transition_tag_embedding
+        with tf.variable_scope("exact_match_embedding_layer"):
+            exact_match_embedding_layer = tf.get_variable(
+                initializer=tf.truncated_normal(
+                    [2, self._exact_match_embedding_dim],
+                    stddev=0.5
+                ),
+                name="exact_match_embedding_dim"
+            )
+
+        return word_embedding, char_embedding, column_data_type_embedding, special_tag_embedding, special_transition_tag_embedding, exact_match_embedding_layer
 
     def _encode_word(self, embedded_character, word_length):
         """
@@ -913,10 +922,11 @@ class Model:
                 shape=[self._batch_size, self._table_size+1, self._table_size+1]
             )
 
-    def _calc_scores(self, table_representation, segment_representation):
+    def _calc_scores(self, table_representation, segment_representation, exact_match_feature):
         """
         :param table_representation:    [batch_size, table_size, table_extra_transform_dim]
         :param segment_representation:  [batch_size, max_segment_length, max_question_length, highway_transform_layer_2_dim]
+        :param exact_match_feature:     [batch_size, max_segment_length, max_question_length, table_size, exact_match_embedding_dim]
         :return:
             [batch_size, max_segment_length, max_question_length, table_size]
         """
@@ -958,6 +968,11 @@ class Model:
                     shape=[self._highway_transform_layer_2_dim, self._scoring_weight_dim],
                     name="question_weight"
                 )
+                w_e = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[self._exact_match_embedding_dim, self._scoring_weight_dim],
+                    name="exact_match_feature_weight"
+                )
                 bias = tf.get_variable(
                     initializer=tf.zeros_initializer(),
                     shape=[1, self._scoring_weight_dim],
@@ -981,10 +996,14 @@ class Model:
                                 values=[
                                     h_x,
                                     h_s,
+                                    tf.nn.dropout(
+                                        tf.reshape(exact_match_feature, shape=[-1, self._exact_match_embedding_dim]),
+                                        keep_prob=self._dropout_keep_prob
+                                    )
                                 ],
                                 axis=-1
                             ),
-                            b=tf.concat(values=[w_x, w_s], axis=0)
+                            b=tf.concat(values=[w_x, w_s, w_e], axis=0)
                         ),
                         bias
                     ),
@@ -1035,7 +1054,7 @@ class Model:
             )
         )
 
-        return tf.gather_nd(tag_scores, index)
+        return scores
 
     def _calc_ground_truth_transition_scores(self, transition_scores):
         """
@@ -1665,7 +1684,7 @@ class Model:
     def _build_graph(self):
         self._build_input_nodes()
         self._set_dynamic_value()
-        word_embedding, character_embedding, data_type_embedding, special_tag_embedding, special_transition_tag_embedding = self._build_embedding()
+        word_embedding, character_embedding, data_type_embedding, special_tag_embedding, special_transition_tag_embedding, exact_match_embedding = self._build_embedding()
 
         embedded_character = tf.nn.embedding_lookup(
             params=character_embedding,
@@ -1675,6 +1694,12 @@ class Model:
         character_based_word_embedding = self._encode_word(
             embedded_character=embedded_character,
             word_length=self._word_character_length
+        )
+
+        # Shape: [batch_size, max_question_length, table_size, exact_match_embedding_dim]
+        embedded_exact_match_feature = tf.nn.embedding_lookup(
+            params=exact_match_embedding,
+            ids=tf.cast(self._exact_match_matrix, dtype=tf.int32)
         )
 
         combine_embedding_layer_params = self._initialize_combine_embedding_layer()
@@ -1733,7 +1758,8 @@ class Model:
         # Shape: [batch_size, max_segment_length, max_question_length, table_size]
         self._neural_scores = self._calc_scores(
             table_representation=table_representation,
-            segment_representation=segment_representation
+            segment_representation=segment_representation,
+            exact_match_feature=embedded_exact_match_feature
         )
 
         # Shape: [batch_size, table_size+1, table_size+1]

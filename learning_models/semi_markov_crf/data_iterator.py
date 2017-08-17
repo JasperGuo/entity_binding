@@ -96,6 +96,7 @@ class Batch:
         print("Question char ids: ", self.questions_char_ids, np.array(self.questions_char_ids).shape)
         print("Question word ids: ", self.questions_word_ids, np.array(self.questions_word_ids).shape)
         print("Ground truth: ", self.ground_truth, np.array(self.ground_truth).shape)
+        print("Ground actual truth segmentation length: ", self.ground_truth_actual_segmentation_length, np.array(self.ground_truth_actual_segmentation_length).shape)
         print("Ground truth segmentation length: ", self.ground_truth_segmentation_length, np.array(self.ground_truth_segmentation_length).shape)
         print("Ground truth segment length: ", self.ground_truth_segment_length, np.array(self.ground_truth_segment_length).shape)
         print("Ground truth segment position: ", self.ground_truth_segment_position, np.array(self.ground_truth_segment_position).shape)
@@ -280,7 +281,12 @@ class DataIterator:
         :param max_cell_value_num_per_col:
         :return:
         """
+
+        exact_match_matrix = list()
+
         matrix = list()
+        curr_question_length = len(exact_match)
+        table_size = 3 + max_column_num + max_cell_value_num_per_col * max_column_num
         valid_column_num = len(table["column_type_ids"])
         valid_column_size = [len(c) for c in table["column_word_ids"]]
         valid_index_range = list()
@@ -290,7 +296,7 @@ class DataIterator:
             else:
                 valid_index_range.append(valid_index_range[idx - 1] + size)
         for match in exact_match:
-            temp = [0]*(3 + max_column_num + max_cell_value_num_per_col*max_column_num)
+            temp = [0]*table_size
             if len(match) == 0:
                 matrix.append(temp)
                 continue
@@ -309,7 +315,24 @@ class DataIterator:
                     valid_idx = 3 + max_column_num + max_cell_value_num_per_col * i + diff - 1
                 temp[valid_idx] = m[1]
             matrix.append(temp)
-        return matrix
+        matrix += [[0.0] * table_size] * (self._max_question_length - curr_question_length)
+        exact_match_matrix.append(np.array(matrix))
+
+        for i in range(1, self._max_segment_length):
+            matrix = list()
+            for j in range(i, curr_question_length):
+                temp = [0] * table_size
+                for m in range(table_size):
+                    count = 0
+                    for n in range(i + 1):
+                        count += exact_match_matrix[i-1][j - n][m]
+                    if count == i + 1:
+                        temp[j] = 0
+
+                matrix.append(temp)
+            matrix = [[0.0] * table_size] * i + matrix + [[0.0] * table_size] * (self._max_question_length - curr_question_length)
+            exact_match_matrix.append(np.array(matrix))
+        return np.array(exact_match_matrix)
 
     def _prepare_batch(self, questions):
         """
@@ -397,7 +420,8 @@ class DataIterator:
                 max_column_num=max_column_num,
                 max_cell_value_num_per_col=max_cell_value_num_per_col
             )
-            exact_match_matrix.append(matrix + [[0.0]*(3 + max_column_num + max_cell_value_num_per_col * max_column_num)]*(self._max_question_length - len(matrix)))
+            exact_match_matrix.append(matrix)
+            # exact_match_matrix.append(matrix + [[0.0]*(3 + max_column_num + max_cell_value_num_per_col * max_column_num)]*(self._max_question_length - len(matrix)))
 
         # Table
         # ==========================================
