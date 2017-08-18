@@ -66,6 +66,8 @@ class Model:
         self._column_data_type_num = column_data_type_num
         self._pretrain_word_embedding = pretrain_word_embedding
 
+        self._is_layer_1_reuse = False
+
         if self._is_test:
             self._batch_size = opts["test_batch_size"]
         else:
@@ -200,7 +202,7 @@ class Model:
         self._max_cell_value_num_per_col = tf.shape(self._cell_value_length)[2]
         self._max_cell_value_length = tf.shape(self._cell_value_word_ids)[3]
 
-        # LIT + PAT + table_name + num_of_columns + cell_values
+        # LIT(1) + PAT(2) + table_name + num_of_columns + cell_values
         self._table_size = 2 + 1 + self._max_column_num + self._max_column_num * self._max_cell_value_num_per_col
 
     def _build_embedding(self):
@@ -429,8 +431,12 @@ class Model:
                     ),
                     units=self._highway_transform_layer_1_dim,
                     activation=tf.nn.relu,
-                    name="highway_transform_layer_1"
+                    name="highway_transform_layer_1",
+                    reuse=self._is_layer_1_reuse
                 )
+
+                if not self._is_layer_1_reuse:
+                    self._is_layer_1_reuse = True
 
                 layer_2 = tf.layers.dense(
                     inputs=layer_1,
@@ -583,83 +589,71 @@ class Model:
                 ),
                 shape=[-1, self._data_type_embedding_dim + self._combined_embedding_dim + self._combined_embedding_dim]
             )
-            dropout_layer = tf.nn.dropout(
-                x=rich_embedding,
-                keep_prob=self._dropout_keep_prob
-            )
-            layer_1 = tf.layers.dense(
-                inputs=dropout_layer,
-                units=self._cell_value_encoder_layer_1_dim,
-                activation=tf.nn.relu,
-                name="encode_cell_value_layer_1"
-            )
-            layer_2 = tf.layers.dense(
-                inputs=layer_1,
-                units=self._cell_value_encoder_layer_2_dim,
-                name="encode_cell_value_layer_2"
-            )
+            cell_output_layer = tf.layers.dense(inputs = rich_embedding,
+                                                units=self._cell_value_encoder_layer_2_dim,
+                                                activation=tf.nn.relu)
 
             return tf.reshape(
-                layer_2,
+                cell_output_layer,
                 shape=[self._batch_size, self._max_column_num, self._max_cell_value_num_per_col,
                        self._cell_value_encoder_layer_2_dim]
             )
 
-    def _transform_column_name_and_table_name(self, table_name_representation, column_name_representation):
-        """
-        :param table_name_representation:   [batch_size, combined_embedding_dim]
-        :param column_name_representation:  [batch_size, max_column_num, combined_embedding_dim]
-        :return:
-            table_name:     [batch_size, table_extra_transform_dim],
-            column_name:    [batch_size, max_column_num, table_extra_transform_dim]
-        """
-        with tf.variable_scope("transform_column_name_and_table_name"):
-            # Shape: [batch_size + batch_size * max_column_num, table_extra_transform_dim]
-            transformed = tf.layers.dense(
-                inputs=tf.concat(
-                    values=[
-                        table_name_representation,
-                        tf.reshape(
-                            column_name_representation,
-                            shape=[-1, self._combined_embedding_dim]
-                        )
-                    ],
-                    axis=0
-                ),
-                units=self._table_extra_transform_dim,
-                activation=tf.nn.relu
-            )
+    # def _transform_column_name_and_table_name(self, table_name_representation, column_name_representation):
+    #     """
+    #     :param table_name_representation:   [batch_size, combined_embedding_dim]
+    #     :param column_name_representation:  [batch_size, max_column_num, combined_embedding_dim]
+    #     :return:
+    #         table_name:     [batch_size, table_extra_transform_dim],
+    #         column_name:    [batch_size, max_column_num, table_extra_transform_dim]
+    #     """
+    #     with tf.variable_scope("transform_column_name_and_table_name"):
+    #         # Shape: [batch_size + batch_size * max_column_num, table_extra_transform_dim]
+    #         transformed = tf.layers.dense(
+    #             inputs=tf.concat(
+    #                 values=[
+    #                     table_name_representation,
+    #                     tf.reshape(
+    #                         column_name_representation,
+    #                         shape=[-1, self._combined_embedding_dim]
+    #                     )
+    #                 ],
+    #                 axis=0
+    #             ),
+    #             units=self._table_extra_transform_dim,
+    #             activation=tf.nn.relu
+    #         )
+    #
+    #         transformed_table_name_representation = tf.slice(
+    #             transformed,
+    #             begin=[0, 0],
+    #             size=[self._batch_size, self._table_extra_transform_dim]
+    #         )
+    #
+    #         transformed_column_name_representation = tf.reshape(
+    #             tf.slice(
+    #                 transformed,
+    #                 begin=[self._batch_size, 0],
+    #                 size=[-1, self._table_extra_transform_dim]
+    #             ),
+    #             shape=[self._batch_size, self._max_column_num, self._table_extra_transform_dim]
+    #         )
+    #
+    #         return transformed_table_name_representation, transformed_column_name_representation
 
-            transformed_table_name_representation = tf.slice(
-                transformed,
-                begin=[0, 0],
-                size=[self._batch_size, self._table_extra_transform_dim]
-            )
-
-            transformed_column_name_representation = tf.reshape(
-                tf.slice(
-                    transformed,
-                    begin=[self._batch_size, 0],
-                    size=[-1, self._table_extra_transform_dim]
-                ),
-                shape=[self._batch_size, self._max_column_num, self._table_extra_transform_dim]
-            )
-
-            return transformed_table_name_representation, transformed_column_name_representation
-
-    def _transform_special_tag(self, special_tag_embedding):
-        """
-        Transform special tag
-        :param special_tag_embedding:
-        :return:
-            [2, table_extra_transform_dim]
-        """
-        with tf.variable_scope("transform_special_tag_embedding"):
-            return tf.layers.dense(
-                inputs=special_tag_embedding,
-                units=self._table_extra_transform_dim,
-                activation=tf.nn.relu
-            )
+    # def _transform_special_tag(self, special_tag_embedding):
+    #     """
+    #     Transform special tag
+    #     :param special_tag_embedding:
+    #     :return:
+    #         [2, table_extra_transform_dim]
+    #     """
+    #     with tf.variable_scope("transform_special_tag_embedding"):
+    #         return tf.layers.dense(
+    #             inputs=special_tag_embedding,
+    #             units=self._table_extra_transform_dim,
+    #             activation=tf.nn.relu
+    #         )
 
     def _flatten_table(self, table_name_representation, column_name_representation, cell_value_representation, special_tag):
         """
